@@ -1,0 +1,21 @@
+name = "vg_iscsi_development"
+description = "iSCSI Development Environment"
+version = "0.1.0-dev"
+
+authors = ["Vadim Godunko"]
+maintainers = ["Vadim Godunko <vgodunko@gmail.com>"]
+maintainers-logins = ["godunko"]
+licenses = "Apache-2.0 WITH LLVM-exception"
+tags = []
+
+[configuration]
+generate_ada = false
+generate_c = false
+generate_gpr = true
+
+[[depends-on]]
+gnat = "*"
+vg_iscsi = "*"
+
+[[pins]]
+vg_iscsi = { path='..' }
