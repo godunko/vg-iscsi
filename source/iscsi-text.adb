@@ -68,6 +68,18 @@ package body iSCSI.Text with Pure is
    -- Key --
    ---------
 
+   function Key (Self : Parser) return Segment is
+   begin
+      return
+        (Address => Self.Address,
+         Offset  => Self.Key_First,
+         Length  => Self.Delimiter - Self.Key_First);
+   end Key;
+
+   ---------
+   -- Key --
+   ---------
+
    function Key (Self : Parser) return UTF8_String is
       Storage : constant
         System.Storage_Elements.Storage_Array (0 .. Self.Length - 1)
@@ -84,6 +96,31 @@ package body iSCSI.Text with Pure is
       end;
    end Key;
 
+   ----------
+   -- Text --
+   ----------
+
+   function Text (Self : Segment) return UTF8_String is
+      Text : constant
+        UTF8_String (1 .. Natural (Self.Length))
+          with Import, Address => Self.Address + Self.Offset;
+
+   begin
+      return Text;
+   end Text;
+
+   -----------
+   -- Value --
+   -----------
+
+   function Value (Self : Parser) return Segment is
+   begin
+      return
+        (Address => Self.Address,
+         Offset  => Self.Delimiter + 1,
+         Length  => Self.Current - Self.Delimiter - 1);
+   end Value;
+
    -----------
    -- Value --
    -----------
@@ -97,7 +134,7 @@ package body iSCSI.Text with Pure is
       declare
          Text : constant
            UTF8_String (1 .. Natural (Self.Current - Self.Delimiter - 1))
-             with Import, Address => Storage (Self.Delimiter  + 1)'Address;
+             with Import, Address => Storage (Self.Delimiter + 1)'Address;
 
       begin
          return Text;

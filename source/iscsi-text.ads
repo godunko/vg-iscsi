@@ -12,6 +12,10 @@ package iSCSI.Text with Pure is
 
    type UTF8_String is array (Positive range <>) of A0B.Types.Unsigned_8;
 
+   type Segment is private;
+
+   function Text (Self : Segment) return UTF8_String;
+
    type Parser is limited private;
 
    procedure Initialize
@@ -23,9 +27,19 @@ package iSCSI.Text with Pure is
 
    function Key (Self : Parser) return UTF8_String;
 
+   function Key (Self : Parser) return Segment;
+
    function Value (Self : Parser) return UTF8_String;
 
+   function Value (Self : Parser) return Segment;
+
 private
+
+   type Segment is record
+      Address  : System.Address;
+      Offset   : System.Storage_Elements.Storage_Count;
+      Length   : System.Storage_Elements.Storage_Count;
+   end record;
 
    type Parser is limited record
       Address   : System.Address;

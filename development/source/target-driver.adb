@@ -116,8 +116,15 @@ begin
            (Basic_Header.DataSegmentLength));
 
       while iSCSI.Text.Forward (Parser) loop
-         Ada.Text_IO.Put_Line (To_String (iSCSI.Text.Key (Parser)));
-         Ada.Text_IO.Put_Line (To_String (iSCSI.Text.Value (Parser)));
+         --  Ada.Text_IO.Put_Line (To_String (iSCSI.Text.Key (Parser)));
+         --  Ada.Text_IO.Put_Line (To_String (iSCSI.Text.Value (Parser)));
+         Ada.Text_IO.Put (''');
+         Ada.Text_IO.Put
+           (To_String (iSCSI.Text.Text (iSCSI.Text.Key (Parser))));
+         Ada.Text_IO.Put ("' => '");
+         Ada.Text_IO.Put
+           (To_String (iSCSI.Text.Text (iSCSI.Text.Value (Parser))));
+         Ada.Text_IO.Put_Line ("'");
       end loop;
    end;
    --  case Basic_Header.Opcode is
