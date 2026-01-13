@@ -16,3 +16,6 @@ generate_gpr = true
 [[depends-on]]
 a0b_base = "*"
 gnat = "*"
+
+[[pins]]
+a0b_base = { path='../a0b-base' }
