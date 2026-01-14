@@ -44,8 +44,8 @@ package iSCSI.PDUs with Pure is
         iSCSI.Types.Login_Request;
       Transit            : Boolean;
       Continue           : Boolean;
-      CSG                : A0B.Types.Unsigned_2;
-      NSG                : A0B.Types.Unsigned_2;
+      CSG                : iSCSI.Types.Stage;
+      NSG                : iSCSI.Types.Stage;
       Version_Max        : A0B.Types.Unsigned_8;
       Version_Min        : A0B.Types.Unsigned_8;
       TotalAHSLength     : A0B.Types.Unsigned_8;

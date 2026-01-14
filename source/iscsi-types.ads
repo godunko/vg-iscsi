@@ -17,6 +17,12 @@ package iSCSI.Types with Pure is
    Logout_Request                        : constant Opcode_Type;
    SNACK_Request                         : constant Opcode_Type;
 
+   type Stage is private;
+
+   SecurityNegotiation         : constant Stage;
+   LoginOperationalNegotiation : constant Stage;
+   FullFeaturePhase            : constant Stage;
+
 private
 
    type Opcode_Type is mod 2 ** 5 with Size => 5;
@@ -29,5 +35,11 @@ private
    SCSI_Data_Out                         : constant Opcode_Type := 16#05#;
    Logout_Request                        : constant Opcode_Type := 16#06#;
    SNACK_Request                         : constant Opcode_Type := 16#10#;
+
+   type Stage is mod 2 ** 2 with Size => 2;
+
+   SecurityNegotiation         : constant Stage := 0;
+   LoginOperationalNegotiation : constant Stage := 1;
+   FullFeaturePhase            : constant Stage := 3;
 
 end iSCSI.Types;
