@@ -118,7 +118,7 @@ package body iSCSI.Text with Pure is
       return
         (Address => Self.Address,
          Offset  => Self.Delimiter + 1,
-         Length  => Self.Current - Self.Delimiter - 1);
+         Length  => Self.Current - Self.Delimiter - 1 - 1);
    end Value;
 
    -----------
