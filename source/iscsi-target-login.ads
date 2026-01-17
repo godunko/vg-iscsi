@@ -11,8 +11,9 @@ package iSCSI.Target.Login is
    type Login_Handler is private;
 
    procedure Process
-     (Header_Address : System.Address;
-      Data_Address   : System.Address);
+     (Header_Address        : System.Address;
+      Request_Data_Address  : System.Address;
+      Response_Data_Address : System.Address);
 
 private
 

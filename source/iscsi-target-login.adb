@@ -4,6 +4,7 @@
 --  SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 --
 
+with Ada.Text_IO;
 with System.Storage_Elements;
 
 with iSCSI.PDUs;
@@ -16,6 +17,7 @@ package body iSCSI.Target.Login is
    DataSequenceInOrder_String  : constant String := "DataSequenceInOrder";
    DefaultTime2Retain_String   : constant String := "DefaultTime2Retain";
    DefaultTime2Wait_String     : constant String := "DefaultTime2Wait";
+   Discovery_String            : constant String := "Discovery";
    ErrorRecoveryLevel_String   : constant String := "ErrorRecoveryLevel";
    FirstBurstLength_String     : constant String := "FirstBurstLength";
    HeaderDigest_String         : constant String := "HeaderDigest";
@@ -31,8 +33,12 @@ package body iSCSI.Target.Login is
    MaxOutstandingR2T_String    : constant String := "MaxOutstandingR2T";
    MaxRecvDataSegmentLength_String : constant String :=
                                                     "MaxRecvDataSegmentLength";
+   None_String                 : constant String := "None";
+   Normal_String               : constant String := "Normal";
+   NotUnderstood_String        : constant String := "NotUnderstood";
    OFMarker_String             : constant String := "OFMarker";
    OFMarkInt_String            : constant String := "OFMarkInt";
+   Reject_String               : constant String := "Reject";
    SendTargets_String          : constant String := "SendTargets";
    SessionType_String          : constant String := "SessionType";
    TargetAddress_String        : constant String := "TargetAddress";
@@ -154,34 +160,99 @@ package body iSCSI.Target.Login is
      iSCSI.Text.UTF8_String (1 .. Z_Minus_Prefix_String'Length)
        with Import, Address => Z_Minus_Prefix_String'Address;
 
+   Discovery_Value     : constant
+     iSCSI.Text.UTF8_String (1 .. Discovery_String'Length)
+       with Import, Address => Discovery_String'Address;
+   None_Value          : constant
+     iSCSI.Text.UTF8_String (1 .. None_String'Length)
+       with Import, Address => None_String'Address;
+   Normal_Value        : constant
+     iSCSI.Text.UTF8_String (1 .. Normal_String'Length)
+       with Import, Address => Normal_String'Address;
+   NotUnderstood_Value : constant
+     iSCSI.Text.UTF8_String (1 .. NotUnderstood_String'Length)
+       with Import, Address => NotUnderstood_String'Address;
+   Reject_Value        : constant
+     iSCSI.Text.UTF8_String (1 .. Reject_String'Length)
+       with Import, Address => Reject_String'Address;
+
+   type Optional_Slice (Is_Specified : Boolean := False) is record
+      case Is_Specified is
+         when False =>
+            null;
+
+         when True =>
+            Value : iSCSI.Text.Segment;
+      end case;
+   end record;
+
+   function To_String (Item : iSCSI.Text.UTF8_String) return String;
+
    -------------
    -- Process --
    -------------
 
    procedure Process
-     (Header_Address : System.Address;
-      Data_Address   : System.Address)
+     (Header_Address        : System.Address;
+      Request_Data_Address  : System.Address;
+      Response_Data_Address : System.Address)
    is
       use type iSCSI.Text.UTF8_String;
+
+      procedure Append_Key_Value
+        (Key   : iSCSI.Text.UTF8_String;
+         Value : iSCSI.Text.UTF8_String);
+
+      ----------------------
+      -- Append_Key_Value --
+      ----------------------
+
+      procedure Append_Key_Value
+        (Key   : iSCSI.Text.UTF8_String;
+         Value : iSCSI.Text.UTF8_String) is
+      begin
+         Ada.Text_IO.Put ('`');
+         Ada.Text_IO.Put (To_String (Key));
+         Ada.Text_IO.Put ("` => `");
+         Ada.Text_IO.Put (To_String (Value));
+         Ada.Text_IO.Put ('`');
+         Ada.Text_IO.New_Line;
+      end Append_Key_Value;
 
       Header : constant iSCSI.PDUs.Login_Request_Header
         with Import, Address => Header_Address;
       Parser : iSCSI.Text.Parser;
 
+      type Session_Type_Kinds is (Not_Understood, Discovery, Normal);
+
+      type Digest_Kinds is (Reject, None);
+
+      DataDigest_Value     : Optional_Slice;
+      HeaderDigest_Value   : Optional_Slice;
+      InitiatorAlias_Value : Optional_Slice;
+      InitiatorName_Value  : Optional_Slice;
+      SessionType_Value    : Optional_Slice;
+
+      Session_Type  : Session_Type_Kinds := Normal;
+      Header_Digest : Digest_Kinds := None;
+      Data_Digest   : Digest_Kinds := None;
+
    begin
       iSCSI.Text.Initialize
         (Parser,
-         Data_Address,
+         Request_Data_Address,
          System.Storage_Elements.Storage_Count (Header.DataSegmentLength));
 
       while iSCSI.Text.Forward (Parser) loop
          declare
-            Key : constant iSCSI.Text.UTF8_String :=
+            Key   : constant iSCSI.Text.UTF8_String :=
               iSCSI.Text.Text (iSCSI.Text.Key (Parser));
+            Value : constant Optional_Slice :=
+              (True, iSCSI.Text.Value (Parser));
 
          begin
             if Key = DataDigest_Key then
-               raise Program_Error;
+               DataDigest_Value := Value;
 
             elsif Key = DataPDUInOrder_Key then
                raise Program_Error;
@@ -202,7 +273,7 @@ package body iSCSI.Target.Login is
                raise Program_Error;
 
             elsif Key = HeaderDigest_Key then
-               raise Program_Error;
+               HeaderDigest_Value := Value;
 
             elsif Key = IFMarker_Key then
                raise Program_Error;
@@ -217,10 +288,10 @@ package body iSCSI.Target.Login is
                raise Program_Error;
 
             elsif Key = InitiatorAlias_Key then
-               raise Program_Error;
+               InitiatorAlias_Value := Value;
 
             elsif Key = InitiatorName_Key then
-               raise Program_Error;
+               InitiatorName_Value := Value;
 
             elsif Key = iSCSIProtocolLevel_Key then
                raise Program_Error;
@@ -247,7 +318,7 @@ package body iSCSI.Target.Login is
                raise Program_Error;
 
             elsif Key = SessionType_Key then
-               raise Program_Error;
+               SessionType_Value := Value;
 
             elsif Key = TargetAddress_Key then
                raise Program_Error;
@@ -293,6 +364,100 @@ package body iSCSI.Target.Login is
             end if;
          end;
       end loop;
+
+      --
+      --  Validation
+      --
+
+      --  SessionType
+
+      if SessionType_Value.Is_Specified then
+         if SessionType_Value.Value = Discovery_Value then
+            Session_Type := Discovery;
+
+         elsif SessionType_Value.Value = Normal_Value then
+            Session_Type := Normal;
+
+         else
+            Session_Type := Not_Understood;
+
+            Append_Key_Value (SessionType_Key, NotUnderstood_Value);
+
+            raise Program_Error;
+            --  XXX 0209 Session type not supported !!!
+         end if;
+      end if;
+
+      --  DataDigest
+
+      if DataDigest_Value.Is_Specified then
+         --  XXX DataDigest is a list of values, not supported yet !!!
+         --
+         --  Parse value in the list and select appropriate.
+
+         if DataDigest_Value.Value /= None_Value then
+            Data_Digest := Reject;
+         end if;
+      end if;
+
+      --  HeaderDigest
+
+      if HeaderDigest_Value.Is_Specified then
+         --  XXX HeaderDigest is a list of values, not supported yet !!!
+         --
+         --  Parse value in the list and select appropriate.
+
+         if HeaderDigest_Value.Value /= None_Value then
+            Header_Digest := Reject;
+         end if;
+      end if;
+
+      --  InitiatorName
+
+      if not InitiatorName_Value.Is_Specified then
+         --  `InitiatorName` must be present always.
+
+         raise Program_Error;
+         --  XXX 0207 Missing parameter !!!
+      end if;
+
+      --
+      --  Response text
+      --
+
+      case Data_Digest is
+         when Reject =>
+            Append_Key_Value (DataDigest_Key, Reject_Value);
+            Data_Digest := None;  --  Use default value
+
+            --  Alternatively, negotiation can be terminated.
+
+         when None =>
+            Append_Key_Value (DataDigest_Key, None_Value);
+      end case;
+
+      case Header_Digest is
+         when Reject =>
+            Append_Key_Value (HeaderDigest_Key, Reject_Value);
+            Header_Digest := None;  --  Use default value
+
+            --  Alternatively, negotiation can be terminated.
+
+         when None =>
+            Append_Key_Value (HeaderDigest_Key, None_Value);
+      end case;
    end Process;
+
+   ---------------
+   -- To_String --
+   ---------------
+
+   function To_String (Item : iSCSI.Text.UTF8_String) return String is
+      Result : constant String (1 .. Item'Length)
+        with Import, Address => Item'Address;
+
+   begin
+      return Result;
+   end To_String;
 
 end iSCSI.Target.Login;
