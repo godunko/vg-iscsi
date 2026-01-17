@@ -14,6 +14,8 @@ package iSCSI.Text with Pure is
 
    type Segment is private;
 
+   function "=" (Left : Segment; Right : UTF8_String) return Boolean;
+
    function Text (Self : Segment) return UTF8_String;
 
    type Parser is limited private;

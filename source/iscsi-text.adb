@@ -11,6 +11,15 @@ package body iSCSI.Text with Pure is
    use type System.Storage_Elements.Storage_Element;
    use type System.Storage_Elements.Storage_Offset;
 
+   ---------
+   -- "=" --
+   ---------
+
+   function "=" (Left : Segment; Right : UTF8_String) return Boolean is
+   begin
+      return Text (Left) = Right;
+   end "=";
+
    -------------
    -- Forward --
    -------------
