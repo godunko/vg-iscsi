@@ -223,7 +223,7 @@ package body iSCSI.Target.Login is
         with Import, Address => Header_Address;
       Parser : iSCSI.Text.Parser;
 
-      type Session_Type_Kinds is (Not_Understood, Discovery, Normal);
+      type Session_Type_Kinds is (Default, Reject, Discovery, Normal);
 
       type Digest_Kinds is (Reject, None);
 
@@ -233,7 +233,7 @@ package body iSCSI.Target.Login is
       InitiatorName_Value  : Optional_Slice;
       SessionType_Value    : Optional_Slice;
 
-      Session_Type  : Session_Type_Kinds := Normal;
+      Session_Type  : Session_Type_Kinds := Default;
       Header_Digest : Digest_Kinds := None;
       Data_Digest   : Digest_Kinds := None;
 
@@ -379,9 +379,9 @@ package body iSCSI.Target.Login is
             Session_Type := Normal;
 
          else
-            Session_Type := Not_Understood;
+            Session_Type := Reject;
 
-            Append_Key_Value (SessionType_Key, NotUnderstood_Value);
+            Append_Key_Value (SessionType_Key, Reject_Value);
 
             raise Program_Error;
             --  XXX 0209 Session type not supported !!!
