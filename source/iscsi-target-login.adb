@@ -9,10 +9,7 @@ pragma Ada_2022;
 with Ada.Text_IO;
 with System.Storage_Elements;
 
-with A0B.Types;
-
 with iSCSI.PDUs;
-with iSCSI.Text;
 
 package body iSCSI.Target.Login is
 
@@ -209,36 +206,6 @@ package body iSCSI.Target.Login is
 
    function To_String (Item : iSCSI.Text.UTF8_String) return String;
 
-   type Boolean_Value_Kind is (None, Reject, Value);
-
-   type Boolean_Value (Kind : Boolean_Value_Kind := None) is record
-      case Kind is
-         when None =>
-            null;
-
-         when Reject =>
-            null;
-
-         when Value =>
-            Value : Boolean;
-      end case;
-   end record;
-
-   type Numeric_Value_Kind is (None, Reject, Value);
-
-   type Numeric_Value (Kind : Numeric_Value_Kind := None) is record
-      case Kind is
-         when None =>
-            null;
-
-         when Reject =>
-            null;
-
-         when Value =>
-            Value : A0B.Types.Unsigned_64;
-      end case;
-   end record;
-
    procedure Decode_Boolean_Value
      (Image   : iSCSI.Text.UTF8_String;
       Decoded : out Boolean_Value);
@@ -246,12 +213,49 @@ package body iSCSI.Target.Login is
 
    procedure Decode_Numerical_Value
      (Image   : iSCSI.Text.UTF8_String;
-      Decoded : out Numeric_Value);
+      Decoded : out Numerical_Value);
    --  Decode `numerical-value`. Set `Kind` of the `Decoded` to `Reject` in
    --  case of errors:
    --    - empty input string
    --    - illegal character in string
    --    - value out of range (greater than 2**64 - 1)
+
+   procedure Decode_Numerical_Value
+     (Segment : iSCSI.Text.Segment;
+      First   : A0B.Types.Unsigned_64;
+      Last    : A0B.Types.Unsigned_64;
+      Decoded : out Numerical_Value);
+   --  Decode `numerical-value`. Set `Kind` of the `Decoded` to `Reject` in
+   --  case of errors:
+   --    - empty input string
+   --    - illegal character in string
+   --    - value out of given range
+
+   procedure Decode_iSCSI_Name_Value
+     (Image   : iSCSI.Text.Segment;
+      Decoded : out Name_Value);
+   --  Decode `iSCSI-name-value`.
+   --
+   --  XXX No checks are implemented yet.
+
+   procedure Decode_iSCSI_Local_Name_Value
+     (Image   : iSCSI.Text.Segment;
+      Decoded : out Local_Name_Value);
+   --  Decode `iSCSI-local-name-value`.
+   --
+   --  XXX No checks are implemented yet.
+
+   procedure Decode_List_Of_Values
+     (Image   : iSCSI.Text.Segment;
+      Decoded : out List_Of_Values);
+   --  Decode `list-of-values`.
+   --
+   --  XXX No checks are implemented yet.
+
+   procedure Decode_SessionType_Value
+     (Segment : iSCSI.Text.Segment;
+      Decoded : out SessionType_Value);
+   --  Decode `<Discovery|Normal>`
 
    --------------------------
    -- Decode_Boolean_Value --
@@ -277,13 +281,47 @@ package body iSCSI.Target.Login is
       end if;
    end Decode_Boolean_Value;
 
+   -----------------------------------
+   -- Decode_iSCSI_Local_Name_Value --
+   -----------------------------------
+
+   procedure Decode_iSCSI_Local_Name_Value
+     (Image   : iSCSI.Text.Segment;
+      Decoded : out Local_Name_Value) renames Decode_iSCSI_Name_Value;
+
+   -----------------------------
+   -- Decode_iSCSI_Name_Value --
+   -----------------------------
+
+   procedure Decode_iSCSI_Name_Value
+     (Image   : iSCSI.Text.Segment;
+      Decoded : out Name_Value) is
+   begin
+      --  XXX checks are not implemented !!!
+
+      Decoded := (Kind => Value, Value => Image);
+   end Decode_iSCSI_Name_Value;
+
+   ---------------------------
+   -- Decode_List_Of_Values --
+   ---------------------------
+
+   procedure Decode_List_Of_Values
+     (Image   : iSCSI.Text.Segment;
+      Decoded : out List_Of_Values) is
+   begin
+      --  XXX checks are not implemented !!!
+
+      Decoded := (Kind => Value, Value => Image);
+   end Decode_List_Of_Values;
+
    ----------------------------
    -- Decode_Numerical_Value --
    ----------------------------
 
    procedure Decode_Numerical_Value
      (Image   : iSCSI.Text.UTF8_String;
-      Decoded : out Numeric_Value)
+      Decoded : out Numerical_Value)
    is
       use type A0B.Types.Unsigned_8;
       use type A0B.Types.Unsigned_64;
@@ -376,6 +414,62 @@ package body iSCSI.Target.Login is
       end if;
    end Decode_Numerical_Value;
 
+   ----------------------------
+   -- Decode_Numerical_Value --
+   ----------------------------
+
+   procedure Decode_Numerical_Value
+     (Segment : iSCSI.Text.Segment;
+      First   : A0B.Types.Unsigned_64;
+      Last    : A0B.Types.Unsigned_64;
+      Decoded : out Numerical_Value)
+   is
+      Image : constant iSCSI.Text.UTF8_String :=
+        iSCSI.Text.Text (Segment);
+
+   begin
+      Decode_Numerical_Value (Image, Decoded);
+
+      if Decoded.Kind = Value
+        and then Decoded.Value not in First .. Last
+      then
+         Decoded := (Kind => Reject);
+      end if;
+   end Decode_Numerical_Value;
+
+   ------------------------------
+   -- Decode_SessionType_Value --
+   ------------------------------
+
+   procedure Decode_SessionType_Value
+     (Segment : iSCSI.Text.Segment;
+      Decoded : out SessionType_Value)
+   is
+      use type iSCSI.Text.UTF8_String;
+
+      Image : constant iSCSI.Text.UTF8_String :=
+        iSCSI.Text.Text (Segment);
+
+   begin
+      if Image = Discovery_Value then
+         Decoded := (Kind => Value, Value => Discovery);
+
+      elsif Image = Normal_Value then
+         Decoded := (Kind => Value, Value => Normal);
+
+      else
+         Decoded := (Kind => Error);
+      end if;
+   end Decode_SessionType_Value;
+
+   --------------------------------
+   -- Decode_TargetAddress_Value --
+   --------------------------------
+
+   procedure Decode_TargetAddress_Value
+     (Image   : iSCSI.Text.Segment;
+      Decoded : out TargetAddress_Value) renames Decode_iSCSI_Name_Value;
+
    -------------
    -- Process --
    -------------
@@ -385,6 +479,7 @@ package body iSCSI.Target.Login is
       Request_Data_Address  : System.Address;
       Response_Data_Address : System.Address)
    is
+      use type A0B.Types.Unsigned_64;
       use type iSCSI.Text.UTF8_String;
 
       procedure Append_Key_Value
@@ -451,21 +546,22 @@ package body iSCSI.Target.Login is
 
       DataDigest_Value     : Optional_Slice;
       HeaderDigest_Value   : Optional_Slice;
-      InitiatorAlias_Value : Optional_Slice;
       InitiatorName_Value  : Optional_Slice;
       SessionType_Value    : Optional_Slice;
 
       Session_Type             : Session_Type_Kinds := Default;
       Header_Digest            : Digest_Kinds := None;
       Data_Digest              : Digest_Kinds := None;
-      DefaultTime2Retain       : Numeric_Value;
-      DefaultTime2Wait         : Numeric_Value;
+      DefaultTime2Retain       : Numerical_Value;
+      DefaultTime2Wait         : Numerical_Value;
       IFMarker                 : Boolean_Value;
       OFMarker                 : Boolean_Value;
-      ErrorRecoveryLevel       : Numeric_Value;
-      MaxRecvDataSegmentLength : Numeric_Value;
+      ErrorRecoveryLevel       : Numerical_Value;
+      MaxRecvDataSegmentLength : Numerical_Value;
 
-      iSCSIProtocolLevel       : Numeric_Value;
+      iSCSIProtocolLevel       : Numerical_Value;
+
+      Decoded : Decoded_Operational_Parameters;
 
    begin
       iSCSI.Text.Initialize
@@ -475,94 +571,139 @@ package body iSCSI.Target.Login is
 
       while iSCSI.Text.Forward (Parser) loop
          declare
-            Key   : constant iSCSI.Text.UTF8_String :=
+            Key     : constant iSCSI.Text.UTF8_String :=
               iSCSI.Text.Text (iSCSI.Text.Key (Parser));
-            Value : constant Optional_Slice :=
+            Segment : constant iSCSI.Text.Segment := iSCSI.Text.Value (Parser);
+            Text    : constant iSCSI.Text.UTF8_String :=
+              iSCSI.Text.Value (Parser);
+            Value   : constant Optional_Slice :=
               (True, iSCSI.Text.Value (Parser));
 
          begin
             if Key = DataDigest_Key then
                DataDigest_Value := Value;
+               Decode_List_Of_Values (Segment, Decoded.DataDigest);
 
             elsif Key = DataPDUInOrder_Key then
-               raise Program_Error;
+               Decode_Boolean_Value (Text, Decoded.DataPDUInOrder);
 
             elsif Key = DataSequenceInOrder_Key then
-               raise Program_Error;
+               Decode_Boolean_Value (Text, Decoded.DataSequenceInOrder);
 
             elsif Key = DefaultTime2Retain_Key then
                Decode_Numerical_Value
                  (iSCSI.Text.Value (Parser), DefaultTime2Retain);
+               Decode_Numerical_Value
+                 (Segment,
+                  0,
+                  3_600,
+                  Decoded.DefaultTime2Retain);
 
             elsif Key = DefaultTime2Wait_Key then
                Decode_Numerical_Value
                  (iSCSI.Text.Value (Parser), DefaultTime2Wait);
+               Decode_Numerical_Value
+                 (Segment,
+                  0,
+                  3_600,
+                  Decoded.DefaultTime2Wait);
 
             elsif Key = ErrorRecoveryLevel_Key then
                Decode_Numerical_Value
                  (iSCSI.Text.Value (Parser), ErrorRecoveryLevel);
+               Decode_Numerical_Value
+                 (Segment, 0, 2, Decoded.ErrorRecoveryLevel);
 
             elsif Key = FirstBurstLength_Key then
-               raise Program_Error;
+               Decode_Numerical_Value
+                 (Segment,
+                  512,
+                  2**24 - 1,
+                  Decoded.FirstBurstLength);
 
             elsif Key = HeaderDigest_Key then
                HeaderDigest_Value := Value;
+               Decode_List_Of_Values
+                 (iSCSI.Text.Value (Parser), Decoded.HeaderDigest);
 
             elsif Key = IFMarker_Key then
                Decode_Boolean_Value (iSCSI.Text.Value (Parser), IFMarker);
+               Decode_Boolean_Value (Text, Decoded.IFMarker);
 
             elsif Key = IFMarkInt_Key then
-               raise Program_Error;
+               Decode_Numerical_Value (Segment, 1, 65_535, Decoded.IFMarkInt);
 
             elsif Key = ImmediateData_Key then
-               raise Program_Error;
+               Decode_Boolean_Value
+                 (iSCSI.Text.Value (Parser), Decoded.ImmediateData);
 
             elsif Key = InitialR2T_Key then
-               raise Program_Error;
+               Decode_Boolean_Value
+                 (iSCSI.Text.Value (Parser), Decoded.InitialR2T);
 
             elsif Key = InitiatorAlias_Key then
-               InitiatorAlias_Value := Value;
+               Decode_iSCSI_Local_Name_Value
+                 (Segment, Decoded.InitiatorAlias);
 
             elsif Key = InitiatorName_Key then
                InitiatorName_Value := Value;
+               Decode_iSCSI_Name_Value (Segment, Decoded.InitiatorName);
 
             elsif Key = iSCSIProtocolLevel_Key then
                Decode_Numerical_Value
                  (iSCSI.Text.Value (Parser), iSCSIProtocolLevel);
 
             elsif Key = MaxBurstLength_Key then
-               raise Program_Error;
+               Decode_Numerical_Value
+                 (Segment,
+                  512,
+                  2**24 - 1,
+                  Decoded.MaxBurstLength);
 
             elsif Key = MaxConnections_Key then
-               raise Program_Error;
+               Decode_Numerical_Value
+                 (Segment, 0, 65_535, Decoded.MaxConnections);
 
             elsif Key = MaxOutstandingR2T_Key then
-               raise Program_Error;
+               Decode_Numerical_Value
+                 (Segment,
+                  0,
+                  65_535,
+                  Decoded.MaxOutstandingR2T);
 
             elsif Key = MaxRecvDataSegmentLength_Key then
                Decode_Numerical_Value
                  (iSCSI.Text.Value (Parser), MaxRecvDataSegmentLength);
+               Decode_Numerical_Value
+                 (Segment,
+                  512,
+                  2**24 - 1,
+                  Decoded.MaxRecvDataSegmentLength);
 
             elsif Key = OFMarker_Key then
                Decode_Boolean_Value (iSCSI.Text.Value (Parser), OFMarker);
+               Decode_Boolean_Value (Text, Decoded.OFMarker);
 
             elsif Key = OFMarkInt_Key then
-               raise Program_Error;
+               Decode_Numerical_Value (Segment, 1, 65_535, Decoded.OFMarkInt);
 
             elsif Key = SendTargets_Key then
                raise Program_Error;
 
             elsif Key = SessionType_Key then
                SessionType_Value := Value;
+               Decode_SessionType_Value (Segment, Decoded.SessionType);
 
             elsif Key = TargetAddress_Key then
+               --  Decode_TargetAddress_Value (Segment, Decoded.TargetAddress);
                raise Program_Error;
 
             elsif Key = TargetAlias_Key then
+               --  Decode_iSCSI_Local_Name_Value (Segment, Decoded.TargetAlias);
                raise Program_Error;
 
             elsif Key = TargetName_Key then
-               raise Program_Error;
+               Decode_iSCSI_Name_Value (Segment, Decoded.TargetName);
 
             elsif Key = TargetPortalGroupTag_Key then
                raise Program_Error;
