@@ -46,6 +46,7 @@ package body iSCSI.Target.Login is
    MaxOutstandingR2T_String    : constant String := "MaxOutstandingR2T";
    MaxRecvDataSegmentLength_String : constant String :=
                                                     "MaxRecvDataSegmentLength";
+   No_String                   : constant String := "No";
    None_String                 : constant String := "None";
    Normal_String               : constant String := "Normal";
    NotUnderstood_String        : constant String := "NotUnderstood";
@@ -64,6 +65,7 @@ package body iSCSI.Target.Login is
    X_NodeArchitecture_String   : constant String := "X#NodeArchitecture";
    Y_Hash_Prefix_String        : constant String := "Y#";
    Y_Minus_Prefix_String       : constant String := "Y-";
+   Yes_String                  : constant String := "Yes";
    Z_Hash_Prefix_String        : constant String := "Z#";
    Z_Minus_Prefix_String       : constant String := "Z-";
 
@@ -176,6 +178,9 @@ package body iSCSI.Target.Login is
    Discovery_Value     : constant
      iSCSI.Text.UTF8_String (1 .. Discovery_String'Length)
        with Import, Address => Discovery_String'Address;
+   No_Value            : constant
+     iSCSI.Text.UTF8_String (1 .. No_String'Length)
+       with Import, Address => No_String'Address;
    None_Value          : constant
      iSCSI.Text.UTF8_String (1 .. None_String'Length)
        with Import, Address => None_String'Address;
@@ -188,6 +193,9 @@ package body iSCSI.Target.Login is
    Reject_Value        : constant
      iSCSI.Text.UTF8_String (1 .. Reject_String'Length)
        with Import, Address => Reject_String'Address;
+   Yes_Value           : constant
+     iSCSI.Text.UTF8_String (1 .. Yes_String'Length)
+       with Import, Address => Yes_String'Address;
 
    type Optional_Slice (Is_Specified : Boolean := False) is record
       case Is_Specified is
@@ -200,6 +208,21 @@ package body iSCSI.Target.Login is
    end record;
 
    function To_String (Item : iSCSI.Text.UTF8_String) return String;
+
+   type Boolean_Value_Kind is (None, Reject, Value);
+
+   type Boolean_Value (Kind : Boolean_Value_Kind := None) is record
+      case Kind is
+         when None =>
+            null;
+
+         when Reject =>
+            null;
+
+         when Value =>
+            Value : Boolean;
+      end case;
+   end record;
 
    type Numeric_Value_Kind is (None, Reject, Value);
 
@@ -216,6 +239,11 @@ package body iSCSI.Target.Login is
       end case;
    end record;
 
+   procedure Decode_Boolean_Value
+     (Image   : iSCSI.Text.UTF8_String;
+      Decoded : out Boolean_Value);
+   --  Decode `boolean-value`.
+
    procedure Decode_Numerical_Value
      (Image   : iSCSI.Text.UTF8_String;
       Decoded : out Numeric_Value);
@@ -224,6 +252,30 @@ package body iSCSI.Target.Login is
    --    - empty input string
    --    - illegal character in string
    --    - value out of range (greater than 2**64 - 1)
+
+   --------------------------
+   -- Decode_Boolean_Value --
+   --------------------------
+
+   procedure Decode_Boolean_Value
+     (Image   : iSCSI.Text.UTF8_String;
+      Decoded : out Boolean_Value)
+   is
+      use type iSCSI.Text.UTF8_String;
+
+   begin
+      Ada.Text_IO.Put_Line (To_String (Image));
+
+      if Image = No_Value then
+         Decoded := (Kind => Value, Value => False);
+
+      elsif Image = Yes_Value then
+         Decoded := (Kind => Value, Value => True);
+
+      else
+         Decoded := (Kind => Reject);
+      end if;
+   end Decode_Boolean_Value;
 
    ----------------------------
    -- Decode_Numerical_Value --
@@ -374,6 +426,8 @@ package body iSCSI.Target.Login is
       Data_Digest        : Digest_Kinds := None;
       DefaultTime2Retain : Numeric_Value;
       DefaultTime2Wait   : Numeric_Value;
+      IFMarker           : Boolean_Value;
+      OFMarker           : Boolean_Value;
 
    begin
       iSCSI.Text.Initialize
@@ -416,7 +470,7 @@ package body iSCSI.Target.Login is
                HeaderDigest_Value := Value;
 
             elsif Key = IFMarker_Key then
-               raise Program_Error;
+               Decode_Boolean_Value (iSCSI.Text.Value (Parser), IFMarker);
 
             elsif Key = IFMarkInt_Key then
                raise Program_Error;
@@ -449,7 +503,7 @@ package body iSCSI.Target.Login is
                raise Program_Error;
 
             elsif Key = OFMarker_Key then
-               raise Program_Error;
+               Decode_Boolean_Value (iSCSI.Text.Value (Parser), OFMarker);
 
             elsif Key = OFMarkInt_Key then
                raise Program_Error;
