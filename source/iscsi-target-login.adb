@@ -4,13 +4,26 @@
 --  SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 --
 
+pragma Ada_2022;
+
 with Ada.Text_IO;
 with System.Storage_Elements;
+
+with A0B.Types;
 
 with iSCSI.PDUs;
 with iSCSI.Text;
 
 package body iSCSI.Target.Login is
+
+   DIGIT_ZERO             : constant := 16#30#;
+   DIGIT_NINE             : constant := 16#39#;
+   LATIN_CAPITAL_LETTER_A : constant := 16#41#;
+   LATIN_CAPITAL_LETTER_F : constant := 16#46#;
+   LATIN_CAPITAL_LETTER_X : constant := 16#58#;
+   LATIN_SMALL_LETTER_A   : constant := 16#61#;
+   LATIN_SMALL_LETTER_F   : constant := 16#66#;
+   LATIN_SMALL_LETTER_X   : constant := 16#78#;
 
    DataDigest_String           : constant String := "DataDigest";
    DataPDUInOrder_String       : constant String := "DataPDUInOrder";
@@ -188,6 +201,129 @@ package body iSCSI.Target.Login is
 
    function To_String (Item : iSCSI.Text.UTF8_String) return String;
 
+   type Numeric_Value_Kind is (None, Reject, Value);
+
+   type Numeric_Value (Kind : Numeric_Value_Kind := None) is record
+      case Kind is
+         when None =>
+            null;
+
+         when Reject =>
+            null;
+
+         when Value =>
+            Value : A0B.Types.Unsigned_64;
+      end case;
+   end record;
+
+   procedure Decode_Numerical_Value
+     (Image   : iSCSI.Text.UTF8_String;
+      Decoded : out Numeric_Value);
+   --  Decode `numerical-value`. Set `Kind` of the `Decoded` to `Reject` in
+   --  case of errors:
+   --    - empty input string
+   --    - illegal character in string
+   --    - value out of range (greater than 2**64 - 1)
+
+   ----------------------------
+   -- Decode_Numerical_Value --
+   ----------------------------
+
+   procedure Decode_Numerical_Value
+     (Image   : iSCSI.Text.UTF8_String;
+      Decoded : out Numeric_Value)
+   is
+      use type A0B.Types.Unsigned_8;
+      use type A0B.Types.Unsigned_64;
+
+      Index : Positive := Image'First;
+      Digit : A0B.Types.Unsigned_64;
+
+   begin
+      Ada.Text_IO.Put_Line (To_String (Image));
+
+      if Image'Length = 0 then
+         Decoded := (Kind => Reject);
+
+         return;
+      end if;
+
+      if Image'Length > 2
+        and then
+          (Image (Index) = DIGIT_ZERO
+             and Image (Index + 1)
+               in LATIN_CAPITAL_LETTER_X | LATIN_SMALL_LETTER_X)
+      then
+         --  `hex-constant`
+
+         Index   := @ + 2;
+         Decoded := (Kind => Value, Value => 0);
+
+         loop
+            if Image (Index) in DIGIT_ZERO .. DIGIT_NINE then
+               Digit := A0B.Types.Unsigned_64 (Image (Index) - DIGIT_ZERO);
+
+            elsif Image (Index)
+              in LATIN_CAPITAL_LETTER_A .. LATIN_CAPITAL_LETTER_F
+            then
+               Digit :=
+                 A0B.Types.Unsigned_64
+                   (Image (Index) - LATIN_CAPITAL_LETTER_A + 10);
+
+            elsif Image (Index)
+              in LATIN_SMALL_LETTER_A .. LATIN_SMALL_LETTER_F
+            then
+               Digit :=
+                 A0B.Types.Unsigned_64
+                   (Image (Index) - LATIN_SMALL_LETTER_A + 10);
+
+            else
+               Decoded := (Kind => Reject);
+
+               return;
+            end if;
+
+            if Decoded.Value > A0B.Types.Unsigned_64'Last / 16 then
+               Decoded := (Kind => Reject);
+
+               return;
+            end if;
+
+            Decoded.Value := @ + Digit;
+            Index         := @ + 1;
+
+            exit when Index > Image'Last;
+         end loop;
+
+      else
+         --  `decimal-constant`
+
+         Decoded := (Kind => Value, Value => 0);
+
+         loop
+            if Image (Index) in DIGIT_ZERO .. DIGIT_NINE then
+               Digit := A0B.Types.Unsigned_64 (Image (Index) - DIGIT_ZERO);
+
+            else
+               Decoded := (Kind => Reject);
+
+               return;
+            end if;
+
+            if Decoded.Value > (A0B.Types.Unsigned_64'Last - Digit) / 10 then
+               Decoded := (Kind => Reject);
+
+               return;
+            end if;
+
+            Decoded.Value := @ + Digit;
+            Index         := @ + 1;
+
+            exit when Index > Image'Last;
+         end loop;
+      end if;
+   end Decode_Numerical_Value;
+
    -------------
    -- Process --
    -------------
@@ -233,9 +369,11 @@ package body iSCSI.Target.Login is
       InitiatorName_Value  : Optional_Slice;
       SessionType_Value    : Optional_Slice;
 
-      Session_Type  : Session_Type_Kinds := Default;
-      Header_Digest : Digest_Kinds := None;
-      Data_Digest   : Digest_Kinds := None;
+      Session_Type       : Session_Type_Kinds := Default;
+      Header_Digest      : Digest_Kinds := None;
+      Data_Digest        : Digest_Kinds := None;
+      DefaultTime2Retain : Numeric_Value;
+      DefaultTime2Wait   : Numeric_Value;
 
    begin
       iSCSI.Text.Initialize
@@ -261,10 +399,12 @@ package body iSCSI.Target.Login is
                raise Program_Error;
 
             elsif Key = DefaultTime2Retain_Key then
-               raise Program_Error;
+               Decode_Numerical_Value
+                 (iSCSI.Text.Value (Parser), DefaultTime2Retain);
 
             elsif Key = DefaultTime2Wait_Key then
-               raise Program_Error;
+               Decode_Numerical_Value
+                 (iSCSI.Text.Value (Parser), DefaultTime2Wait);
 
             elsif Key = ErrorRecoveryLevel_Key then
                raise Program_Error;
