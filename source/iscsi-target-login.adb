@@ -391,6 +391,29 @@ package body iSCSI.Target.Login is
         (Key   : iSCSI.Text.UTF8_String;
          Value : iSCSI.Text.UTF8_String);
 
+      procedure Append_Key_Value
+        (Key   : iSCSI.Text.UTF8_String;
+         Value : A0B.Types.Unsigned_64);
+
+      procedure Append_Key_Value
+        (Key   : iSCSI.Text.UTF8_String;
+         Value : String);
+
+      ----------------------
+      -- Append_Key_Value --
+      ----------------------
+
+      procedure Append_Key_Value
+        (Key   : iSCSI.Text.UTF8_String;
+         Value : String)
+      is
+         V : constant iSCSI.Text.UTF8_String (1 .. Value'Length)
+           with Import, Address => Value'Address;
+
+      begin
+         Append_Key_Value (Key, V);
+      end Append_Key_Value;
+
       ----------------------
       -- Append_Key_Value --
       ----------------------
@@ -407,6 +430,17 @@ package body iSCSI.Target.Login is
          Ada.Text_IO.New_Line;
       end Append_Key_Value;
 
+      ----------------------
+      -- Append_Key_Value --
+      ----------------------
+
+      procedure Append_Key_Value
+        (Key   : iSCSI.Text.UTF8_String;
+         Value : A0B.Types.Unsigned_64) is
+      begin
+         Append_Key_Value (Key, A0B.Types.Unsigned_64'Image (Value));
+      end Append_Key_Value;
+
       Header : constant iSCSI.PDUs.Login_Request_Header
         with Import, Address => Header_Address;
       Parser : iSCSI.Text.Parser;
@@ -421,13 +455,17 @@ package body iSCSI.Target.Login is
       InitiatorName_Value  : Optional_Slice;
       SessionType_Value    : Optional_Slice;
 
-      Session_Type       : Session_Type_Kinds := Default;
-      Header_Digest      : Digest_Kinds := None;
-      Data_Digest        : Digest_Kinds := None;
-      DefaultTime2Retain : Numeric_Value;
-      DefaultTime2Wait   : Numeric_Value;
-      IFMarker           : Boolean_Value;
-      OFMarker           : Boolean_Value;
+      Session_Type             : Session_Type_Kinds := Default;
+      Header_Digest            : Digest_Kinds := None;
+      Data_Digest              : Digest_Kinds := None;
+      DefaultTime2Retain       : Numeric_Value;
+      DefaultTime2Wait         : Numeric_Value;
+      IFMarker                 : Boolean_Value;
+      OFMarker                 : Boolean_Value;
+      ErrorRecoveryLevel       : Numeric_Value;
+      MaxRecvDataSegmentLength : Numeric_Value;
+
+      iSCSIProtocolLevel       : Numeric_Value;
 
    begin
       iSCSI.Text.Initialize
@@ -461,7 +499,8 @@ package body iSCSI.Target.Login is
                  (iSCSI.Text.Value (Parser), DefaultTime2Wait);
 
             elsif Key = ErrorRecoveryLevel_Key then
-               raise Program_Error;
+               Decode_Numerical_Value
+                 (iSCSI.Text.Value (Parser), ErrorRecoveryLevel);
 
             elsif Key = FirstBurstLength_Key then
                raise Program_Error;
@@ -488,7 +527,8 @@ package body iSCSI.Target.Login is
                InitiatorName_Value := Value;
 
             elsif Key = iSCSIProtocolLevel_Key then
-               raise Program_Error;
+               Decode_Numerical_Value
+                 (iSCSI.Text.Value (Parser), iSCSIProtocolLevel);
 
             elsif Key = MaxBurstLength_Key then
                raise Program_Error;
@@ -500,7 +540,8 @@ package body iSCSI.Target.Login is
                raise Program_Error;
 
             elsif Key = MaxRecvDataSegmentLength_Key then
-               raise Program_Error;
+               Decode_Numerical_Value
+                 (iSCSI.Text.Value (Parser), MaxRecvDataSegmentLength);
 
             elsif Key = OFMarker_Key then
                Decode_Boolean_Value (iSCSI.Text.Value (Parser), OFMarker);
@@ -582,6 +623,22 @@ package body iSCSI.Target.Login is
          end if;
       end if;
 
+      --  iSCSIProtocolLevel
+
+      if iSCSIProtocolLevel.Kind = None then
+         --  iSCSIProtocolLevel := (Kind => Value, Value => 0);
+         --  XXX Default value is 1, however, it is unclear how to distinguish
+         --  missing key in older specification from the default value of
+         --  newer specification.
+
+         null;
+
+      elsif iSCSIProtocolLevel.Kind = Value
+        and then iSCSIProtocolLevel.Value not in 0 .. 2
+      then
+         iSCSIProtocolLevel := (Kind => Reject);
+      end if;
+
       --  DataDigest
 
       if DataDigest_Value.Is_Specified then
@@ -615,6 +672,33 @@ package body iSCSI.Target.Login is
          --  XXX 0207 Missing parameter !!!
       end if;
 
+      --  DefaultTime2Retain
+
+      if DefaultTime2Retain.Kind = None then
+         DefaultTime2Retain := (Kind => Value, Value => 20);
+
+      elsif DefaultTime2Retain.Kind = Value
+        and then DefaultTime2Retain.Value not in 0 .. 3_600
+      then
+         DefaultTime2Retain := (Kind => Reject);
+      end if;
+
+      --  DefaultTime2Wait
+
+      if DefaultTime2Wait.Kind = None then
+         DefaultTime2Wait := (Kind => Value, Value => 2);
+
+      elsif DefaultTime2Wait.Kind = Value
+        and then DefaultTime2Wait.Value not in 0 .. 3_600
+      then
+         DefaultTime2Wait := (Kind => Reject);
+      end if;
+
+      --  IFMarker                 : Boolean_Value;
+      --  OFMarker                 : Boolean_Value;
+      --  ErrorRecoveryLevel       : Numeric_Value;
+      --  MaxRecvDataSegmentLength : Numeric_Value;
+
       --
       --  Response text
       --
@@ -639,6 +723,47 @@ package body iSCSI.Target.Login is
 
          when None =>
             Append_Key_Value (HeaderDigest_Key, None_Value);
+      end case;
+
+      case DefaultTime2Retain.Kind is
+         when None =>
+            null;
+
+         when Reject =>
+            Append_Key_Value (DefaultTime2Retain_Key, Reject_Value);
+
+         when Value =>
+            Append_Key_Value
+              (DefaultTime2Retain_Key, DefaultTime2Retain.Value);
+      end case;
+
+      case DefaultTime2Wait.Kind is
+         when None =>
+            null;
+
+         when Reject =>
+            Append_Key_Value (DefaultTime2Wait_Key, Reject_Value);
+
+         when Value =>
+            Append_Key_Value
+              (DefaultTime2Wait_Key, DefaultTime2Wait.Value);
+      end case;
+
+      --  IFMarker                 : Boolean_Value;
+      --  OFMarker                 : Boolean_Value;
+      --  ErrorRecoveryLevel       : Numeric_Value;
+      --  MaxRecvDataSegmentLength : Numeric_Value;
+
+      case iSCSIProtocolLevel.Kind is
+         when None =>
+            null;
+
+         when Reject =>
+            Append_Key_Value (iSCSIProtocolLevel_Key, Reject_Value);
+
+         when Value =>
+            Append_Key_Value
+              (iSCSIProtocolLevel_Key, iSCSIProtocolLevel.Value);
       end case;
    end Process;
 
