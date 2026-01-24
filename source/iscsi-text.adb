@@ -142,7 +142,7 @@ package body iSCSI.Text with Pure is
    begin
       declare
          Text : constant
-           UTF8_String (1 .. Natural (Self.Current - Self.Delimiter - 1))
+           UTF8_String (1 .. Natural (Self.Current - Self.Delimiter - 1 - 1))
              with Import, Address => Storage (Self.Delimiter + 1)'Address;
 
       begin
