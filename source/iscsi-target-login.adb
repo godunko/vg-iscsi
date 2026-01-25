@@ -745,14 +745,8 @@ package body iSCSI.Target.Login is
         with Import, Address => Header_Address;
       Parser : iSCSI.Text.Parser;
 
-      type Digest_Kinds is (Reject, None);
-
-      DataDigest_Value     : Optional_Slice;
-      HeaderDigest_Value   : Optional_Slice;
       InitiatorName_Value  : Optional_Slice;
 
-      Header_Digest            : Digest_Kinds := None;
-      Data_Digest              : Digest_Kinds := None;
       DefaultTime2Retain       : Numerical_Value;
       DefaultTime2Wait         : Numerical_Value;
       IFMarker                 : Boolean_Value;
@@ -780,7 +774,6 @@ package body iSCSI.Target.Login is
 
          begin
             if Key = DataDigest_Key then
-               DataDigest_Value := Value;
                Decode_List_Of_Values (Segment, Decoded.DataDigest);
 
             elsif Key = DataPDUInOrder_Key then
@@ -821,7 +814,6 @@ package body iSCSI.Target.Login is
                   Decoded.FirstBurstLength);
 
             elsif Key = HeaderDigest_Key then
-               HeaderDigest_Value := Value;
                Decode_List_Of_Values
                  (iSCSI.Text.Value (Parser), Decoded.HeaderDigest);
 
@@ -967,30 +959,6 @@ package body iSCSI.Target.Login is
       --  Validation
       --
 
-      --  DataDigest
-
-      if DataDigest_Value.Is_Specified then
-         --  XXX DataDigest is a list of values, not supported yet !!!
-         --
-         --  Parse value in the list and select appropriate.
-
-         if DataDigest_Value.Value /= None_Value then
-            Data_Digest := Reject;
-         end if;
-      end if;
-
-      --  HeaderDigest
-
-      if HeaderDigest_Value.Is_Specified then
-         --  XXX HeaderDigest is a list of values, not supported yet !!!
-         --
-         --  Parse value in the list and select appropriate.
-
-         if HeaderDigest_Value.Value /= None_Value then
-            Header_Digest := Reject;
-         end if;
-      end if;
-
       --  InitiatorName
 
       if not InitiatorName_Value.Is_Specified then
@@ -1030,28 +998,6 @@ package body iSCSI.Target.Login is
       --
       --  Response text
       --
-
-      case Data_Digest is
-         when Reject =>
-            Append_Key_Value (DataDigest_Key, Reject_Value);
-            Data_Digest := None;  --  Use default value
-
-            --  Alternatively, negotiation can be terminated.
-
-         when None =>
-            Append_Key_Value (DataDigest_Key, None_Value);
-      end case;
-
-      case Header_Digest is
-         when Reject =>
-            Append_Key_Value (HeaderDigest_Key, Reject_Value);
-            Header_Digest := None;  --  Use default value
-
-            --  Alternatively, negotiation can be terminated.
-
-         when None =>
-            Append_Key_Value (HeaderDigest_Key, None_Value);
-      end case;
 
       case DefaultTime2Retain.Kind is
          when None =>
@@ -1166,6 +1112,8 @@ package body iSCSI.Target.Login is
    procedure Validate_Discovery_Session
      (Decoded : Decoded_Operational_Parameters)
    is
+      use type iSCSI.Text.Segment;
+
       procedure Append_Key_Value
         (Key   : iSCSI.Text.UTF8_String;
          Value : iSCSI.Text.UTF8_String);
@@ -1202,6 +1150,87 @@ package body iSCSI.Target.Login is
             Append_Key_Value (iSCSIProtocolLevel_Key, Irrelevant_Value);
       end case;
 
+      --  DataDigest
+      --
+      --  XXX Doesn't support list of values.
+      --  XXX Accept `None` only.
+      --  XXX Share code with `Discovery` session processing.
+
+      case Decoded.DataDigest.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (DataDigest_Key, Reject_Value);
+
+            --  XXX Should error be reported ???
+
+         when Value =>
+            if Decoded.DataDigest.Value = None_Value then
+               Append_Key_Value (DataDigest_Key, None_Value);
+
+            else
+               Append_Key_Value (DataDigest_Key, Reject_Value);
+            end if;
+      end case;
+
+      --  HeaderDigest
+      --
+      --  XXX Doesn't support list of values.
+      --  XXX Accept `None` only.
+      --  XXX Share code with `Normal` session processing.
+
+      case Decoded.HeaderDigest.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (HeaderDigest_Key, Reject_Value);
+
+            --  XXX Should error be reported ???
+
+         when Value =>
+            if Decoded.HeaderDigest.Value = None_Value then
+               Append_Key_Value (HeaderDigest_Key, None_Value);
+
+            else
+               Append_Key_Value (HeaderDigest_Key, Reject_Value);
+            end if;
+      end case;
+
+      --  MaxConnections           : Numerical_Value;
+      --  SendTargets              : Name_Value;
+      --  TargetName               : Name_Value;
+      --  InitiatorName            : Name_Value;
+      --  TargetAlias              : Local_Name_Value;
+      --  InitiatorAlias           : Local_Name_Value;
+      --  TargetAddress            : TargetAddress_Value;
+      --  TargetPortalGroupTag     : Binary_Value_16;
+      --  InitialR2T               : Boolean_Value;
+      --  ImmediateData            : Boolean_Value;
+      --  MaxRecvDataSegmentLength : Numerical_Value;
+      --  MaxBurstLength           : Numerical_Value;
+      --  FirstBurstLength         : Numerical_Value;
+      --  DefaultTime2Wait         : Numerical_Value;
+      --  DefaultTime2Retain       : Numerical_Value;
+      --  MaxOutstandingR2T        : Numerical_Value;
+      --  DataPDUInOrder           : Boolean_Value;
+      --  DataSequenceInOrder      : Boolean_Value;
+      --  ErrorRecoveryLevel       : Numerical_Value;
+      --
+      --  --  [RFC3720], obsolete in [RFC7143]
+      --
+      --  OFMarker                 : Boolean_Value;
+      --  IFMarker                 : Boolean_Value;
+      --  OFMarkInt                : Numerical_Value;
+      --  IFMarkInt                : Numerical_Value;
+      --
+      --  --  [RFC7143]
+      --
+      --  TaskReporting            : List_Of_Values;
+      --  X_NodeArchitecture       : List_Of_Values;
+      --
+      --  NotUnderstood            : Segment_Array (1 .. 8);
       raise Program_Error;
    end Validate_Discovery_Session;
 
@@ -1212,6 +1241,8 @@ package body iSCSI.Target.Login is
    procedure Validate_Normal_Session
      (Decoded : Decoded_Operational_Parameters)
    is
+      use type iSCSI.Text.Segment;
+
       procedure Append_Key_Value
         (Key   : iSCSI.Text.UTF8_String;
          Value : iSCSI.Text.UTF8_String);
@@ -1296,6 +1327,87 @@ package body iSCSI.Target.Login is
             Append_Key_Value (iSCSIProtocolLevel_Key, iSCSIProtocolLevel);
       end case;
 
+      --  DataDigest
+      --
+      --  XXX Doesn't support list of values.
+      --  XXX Accept `None` only.
+      --  XXX Share code with `Discovery` session processing.
+
+      case Decoded.DataDigest.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (DataDigest_Key, Reject_Value);
+
+            --  XXX Should error be reported ???
+
+         when Value =>
+            if Decoded.DataDigest.Value = None_Value then
+               Append_Key_Value (DataDigest_Key, None_Value);
+
+            else
+               Append_Key_Value (DataDigest_Key, Reject_Value);
+            end if;
+      end case;
+
+      --  HeaderDigest
+      --
+      --  XXX Doesn't support list of values.
+      --  XXX Accept `None` only.
+      --  XXX Share code with `Discovery` session processing.
+
+      case Decoded.HeaderDigest.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (HeaderDigest_Key, Reject_Value);
+
+            --  XXX Should error be reported ???
+
+         when Value =>
+            if Decoded.HeaderDigest.Value = None_Value then
+               Append_Key_Value (HeaderDigest_Key, None_Value);
+
+            else
+               Append_Key_Value (HeaderDigest_Key, Reject_Value);
+            end if;
+      end case;
+
+      --  MaxConnections           : Numerical_Value;
+      --  SendTargets              : Name_Value;
+      --  TargetName               : Name_Value;
+      --  InitiatorName            : Name_Value;
+      --  TargetAlias              : Local_Name_Value;
+      --  InitiatorAlias           : Local_Name_Value;
+      --  TargetAddress            : TargetAddress_Value;
+      --  TargetPortalGroupTag     : Binary_Value_16;
+      --  InitialR2T               : Boolean_Value;
+      --  ImmediateData            : Boolean_Value;
+      --  MaxRecvDataSegmentLength : Numerical_Value;
+      --  MaxBurstLength           : Numerical_Value;
+      --  FirstBurstLength         : Numerical_Value;
+      --  DefaultTime2Wait         : Numerical_Value;
+      --  DefaultTime2Retain       : Numerical_Value;
+      --  MaxOutstandingR2T        : Numerical_Value;
+      --  DataPDUInOrder           : Boolean_Value;
+      --  DataSequenceInOrder      : Boolean_Value;
+      --  ErrorRecoveryLevel       : Numerical_Value;
+      --
+      --  --  [RFC3720], obsolete in [RFC7143]
+      --
+      --  OFMarker                 : Boolean_Value;
+      --  IFMarker                 : Boolean_Value;
+      --  OFMarkInt                : Numerical_Value;
+      --  IFMarkInt                : Numerical_Value;
+      --
+      --  --  [RFC7143]
+      --
+      --  TaskReporting            : List_Of_Values;
+      --  X_NodeArchitecture       : List_Of_Values;
+      --
+      --  NotUnderstood            : Segment_Array (1 .. 8);
       raise Program_Error;
    end Validate_Normal_Session;
 
