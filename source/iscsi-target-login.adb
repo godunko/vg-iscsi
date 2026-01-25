@@ -1141,6 +1141,7 @@ package body iSCSI.Target.Login is
       --  MaxConnections     : Positive := 1;
       TargetName         : iSCSI.Text.Segment with Unreferenced;
       InitiatorName      : iSCSI.Text.Segment with Unreferenced;
+      InitiatorAlias     : iSCSI.Text.Segment with Unreferenced;
 
    begin
       --  iSCSIProtocolLevel, irrelevant when SessionType = Discovery
@@ -1202,6 +1203,19 @@ package body iSCSI.Target.Login is
             else
                Append_Key_Value (HeaderDigest_Key, Reject_Value);
             end if;
+      end case;
+
+      --  InitiatorAlias, Declarative, optional
+
+      case Decoded.InitiatorAlias.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (InitiatorAlias_Key, Reject_Value);
+
+         when Value =>
+            InitiatorAlias := Decoded.InitiatorAlias.Value;
       end case;
 
       --  InitiatorName, Declarative, must be provided
@@ -1269,7 +1283,6 @@ package body iSCSI.Target.Login is
             TargetName := Decoded.TargetName.Value;
       end case;
 
-      --  InitiatorAlias           : Local_Name_Value;
       --  TargetAddress            : TargetAddress_Value;
       --  TargetPortalGroupTag     : Binary_Value_16;
       --  InitialR2T               : Boolean_Value;
@@ -1382,6 +1395,7 @@ package body iSCSI.Target.Login is
       MaxConnections     : Positive := 1;
       TargetName         : iSCSI.Text.Segment with Unreferenced;
       InitiatorName      : iSCSI.Text.Segment with Unreferenced;
+      InitiatorAlias     : iSCSI.Text.Segment with Unreferenced;
 
    begin
       --  iSCSIProtocolLevel
@@ -1449,6 +1463,19 @@ package body iSCSI.Target.Login is
             else
                Append_Key_Value (HeaderDigest_Key, Reject_Value);
             end if;
+      end case;
+
+      --  InitiatorAlias, Declarative, optional
+
+      case Decoded.InitiatorAlias.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (InitiatorAlias_Key, Reject_Value);
+
+         when Value =>
+            InitiatorAlias := Decoded.InitiatorAlias.Value;
       end case;
 
       --  InitiatorName, Declarative, must be provided
@@ -1522,7 +1549,6 @@ package body iSCSI.Target.Login is
             TargetName := Decoded.TargetName.Value;
       end case;
 
-      --  InitiatorAlias           : Local_Name_Value;
       --  TargetAddress            : TargetAddress_Value;
       --  TargetPortalGroupTag     : Binary_Value_16;
       --  InitialR2T               : Boolean_Value;
