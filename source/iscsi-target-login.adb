@@ -44,6 +44,7 @@ package body iSCSI.Target.Login is
    InitialR2T_String           : constant String := "InitialR2T";
    InitiatorAlias_String       : constant String := "InitiatorAlias";
    InitiatorName_String        : constant String := "InitiatorName";
+   Irrelevant_String           : constant String := "Irrelevant";
    iSCSIProtocolLevel_String   : constant String := "iSCSIProtocolLevel";
    MaxBurstLength_String       : constant String := "MaxBurstLength";
    MaxConnections_String       : constant String := "MaxConnections";
@@ -182,6 +183,9 @@ package body iSCSI.Target.Login is
    Discovery_Value     : constant
      iSCSI.Text.UTF8_String (1 .. Discovery_String'Length)
        with Import, Address => Discovery_String'Address;
+   Irrelevant_Value    : constant
+     iSCSI.Text.UTF8_String (1 .. Irrelevant_String'Length)
+       with Import, Address => Irrelevant_String'Address;
    No_Value            : constant
      iSCSI.Text.UTF8_String (1 .. No_String'Length)
        with Import, Address => No_String'Address;
@@ -678,7 +682,7 @@ package body iSCSI.Target.Login is
    procedure Process
      (Header_Address        : System.Address;
       Request_Data_Address  : System.Address;
-      Response_Data_Address : System.Address)
+      Response_Data_Address : System.Address with Unreferenced)
    is
       use type A0B.Types.Unsigned_64;
       use type iSCSI.Text.UTF8_String;
@@ -755,8 +759,6 @@ package body iSCSI.Target.Login is
       OFMarker                 : Boolean_Value;
       ErrorRecoveryLevel       : Numerical_Value;
       MaxRecvDataSegmentLength : Numerical_Value;
-
-      iSCSIProtocolLevel       : Numerical_Value;
 
       Decoded : Decoded_Operational_Parameters;
 
@@ -848,9 +850,8 @@ package body iSCSI.Target.Login is
 
             elsif Key = iSCSIProtocolLevel_Key then
                Decode_Numerical_Value
-                 (iSCSI.Text.Value (Parser), iSCSIProtocolLevel);
-               Decode_Numerical_Value
-                 (Segment, 0, 2, Decoded.iSCSIProtocolLevel);
+                 (Segment, 0, 31, Decoded.iSCSIProtocolLevel);
+               --  Range is specified by [RFC7144]
 
             elsif Key = MaxBurstLength_Key then
                Decode_Numerical_Value
@@ -965,22 +966,6 @@ package body iSCSI.Target.Login is
       --
       --  Validation
       --
-
-      --  iSCSIProtocolLevel
-
-      if iSCSIProtocolLevel.Kind = None then
-         --  iSCSIProtocolLevel := (Kind => Value, Value => 0);
-         --  XXX Default value is 1, however, it is unclear how to distinguish
-         --  missing key in older specification from the default value of
-         --  newer specification.
-
-         null;
-
-      elsif iSCSIProtocolLevel.Kind = Value
-        and then iSCSIProtocolLevel.Value not in 0 .. 2
-      then
-         iSCSIProtocolLevel := (Kind => Error);
-      end if;
 
       --  DataDigest
 
@@ -1097,18 +1082,6 @@ package body iSCSI.Target.Login is
       --  ErrorRecoveryLevel       : Numeric_Value;
       --  MaxRecvDataSegmentLength : Numeric_Value;
 
-      case iSCSIProtocolLevel.Kind is
-         when None =>
-            null;
-
-         when Error =>
-            Append_Key_Value (iSCSIProtocolLevel_Key, Reject_Value);
-
-         when Value =>
-            Append_Key_Value
-              (iSCSIProtocolLevel_Key, iSCSIProtocolLevel.Value);
-      end case;
-
       --
 
       Validate (Decoded);
@@ -1191,8 +1164,44 @@ package body iSCSI.Target.Login is
    --------------------------------
 
    procedure Validate_Discovery_Session
-     (Decoded : Decoded_Operational_Parameters) is
+     (Decoded : Decoded_Operational_Parameters)
+   is
+      procedure Append_Key_Value
+        (Key   : iSCSI.Text.UTF8_String;
+         Value : iSCSI.Text.UTF8_String);
+
+      ----------------------
+      -- Append_Key_Value --
+      ----------------------
+
+      procedure Append_Key_Value
+        (Key   : iSCSI.Text.UTF8_String;
+         Value : iSCSI.Text.UTF8_String) is
+      begin
+         Ada.Text_IO.Put ('`');
+         Ada.Text_IO.Put (To_String (Key));
+         Ada.Text_IO.Put ("` => `");
+         Ada.Text_IO.Put (To_String (Value));
+         Ada.Text_IO.Put ('`');
+         Ada.Text_IO.New_Line;
+      end Append_Key_Value;
+
+      --  iSCSIProtocolLevel : Natural := 1;
+
    begin
+      --  iSCSIProtocolLevel, irrelevant when SessionType = Discovery
+
+      case Decoded.iSCSIProtocolLevel.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (iSCSIProtocolLevel_Key, Reject_Value);
+
+         when Value =>
+            Append_Key_Value (iSCSIProtocolLevel_Key, Irrelevant_Value);
+      end case;
+
       raise Program_Error;
    end Validate_Discovery_Session;
 
@@ -1201,8 +1210,92 @@ package body iSCSI.Target.Login is
    -----------------------------
 
    procedure Validate_Normal_Session
-     (Decoded : Decoded_Operational_Parameters) is
+     (Decoded : Decoded_Operational_Parameters)
+   is
+      procedure Append_Key_Value
+        (Key   : iSCSI.Text.UTF8_String;
+         Value : iSCSI.Text.UTF8_String);
+
+      procedure Append_Key_Value
+        (Key   : iSCSI.Text.UTF8_String;
+         Value : Natural);
+
+      procedure Append_Key_Value
+        (Key   : iSCSI.Text.UTF8_String;
+         Value : String);
+
+      procedure Set_Error_Unsupported_Version is null;
+
+      ----------------------
+      -- Append_Key_Value --
+      ----------------------
+
+      procedure Append_Key_Value
+        (Key   : iSCSI.Text.UTF8_String;
+         Value : iSCSI.Text.UTF8_String) is
+      begin
+         Ada.Text_IO.Put ('`');
+         Ada.Text_IO.Put (To_String (Key));
+         Ada.Text_IO.Put ("` => `");
+         Ada.Text_IO.Put (To_String (Value));
+         Ada.Text_IO.Put ('`');
+         Ada.Text_IO.New_Line;
+      end Append_Key_Value;
+
+      ----------------------
+      -- Append_Key_Value --
+      ----------------------
+
+      procedure Append_Key_Value
+        (Key   : iSCSI.Text.UTF8_String;
+         Value : String)
+      is
+         V : constant iSCSI.Text.UTF8_String (1 .. Value'Length)
+           with Import, Address => Value'Address;
+
+      begin
+         Append_Key_Value (Key, V);
+      end Append_Key_Value;
+
+      ----------------------
+      -- Append_Key_Value --
+      ----------------------
+
+      procedure Append_Key_Value
+        (Key   : iSCSI.Text.UTF8_String;
+         Value : Natural)
+      is
+         Image : constant String := Natural'Image (Value);
+
+      begin
+         Append_Key_Value (Key, Image (Image'First + 1 .. Image'Last));
+      end Append_Key_Value;
+
+      RFC7143 : constant := 1;
+      RFC7144 : constant := 2;
+
+      iSCSIProtocolLevel : Natural := RFC7143;
+
    begin
+      --  iSCSIProtocolLevel
+
+      case Decoded.iSCSIProtocolLevel.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (iSCSIProtocolLevel_Key, Reject_Value);
+
+            Set_Error_Unsupported_Version;
+
+         when Value =>
+            iSCSIProtocolLevel :=
+              Natural'Min
+                (Natural (Decoded.iSCSIProtocolLevel.Value),
+                 RFC7144);
+            Append_Key_Value (iSCSIProtocolLevel_Key, iSCSIProtocolLevel);
+      end case;
+
       raise Program_Error;
    end Validate_Normal_Session;
 
