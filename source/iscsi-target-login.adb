@@ -1136,6 +1136,7 @@ package body iSCSI.Target.Login is
 
       --  iSCSIProtocolLevel : Natural  := 1;
       --  MaxConnections     : Positive := 1;
+      TargetName         : iSCSI.Text.Segment with Unreferenced;
 
    begin
       --  iSCSIProtocolLevel, irrelevant when SessionType = Discovery
@@ -1225,7 +1226,19 @@ package body iSCSI.Target.Login is
             Append_Key_Value (SendTargets_Key, Irrelevant_Value);
       end case;
 
-      --  TargetName               : Name_Value;
+      --  TargetName, Declarative, optional when SessionType = Discovery
+
+      case Decoded.TargetName.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (TargetName_Key, Reject_Value);
+
+         when Value =>
+            TargetName := Decoded.TargetName.Value;
+      end case;
+
       --  InitiatorName            : Name_Value;
       --  TargetAlias              : Local_Name_Value;
       --  InitiatorAlias           : Local_Name_Value;
@@ -1280,7 +1293,12 @@ package body iSCSI.Target.Login is
         (Key   : iSCSI.Text.UTF8_String;
          Value : String);
 
+      procedure Set_Error_Missing_Parameter is null;
+      --  XXX Set error code to 0207 "Missing parameters"
+
       procedure Set_Error_Unsupported_Version is null;
+      --  XXX Set error code to 0205 "The requested iSCSI version range is not
+      --  supported by the target."
 
       ----------------------
       -- Append_Key_Value --
@@ -1334,6 +1352,7 @@ package body iSCSI.Target.Login is
 
       iSCSIProtocolLevel : Natural  := RFC7143;
       MaxConnections     : Positive := 1;
+      TargetName         : iSCSI.Text.Segment with Unreferenced;
 
    begin
       --  iSCSIProtocolLevel
@@ -1433,7 +1452,19 @@ package body iSCSI.Target.Login is
             Append_Key_Value (SendTargets_Key, Irrelevant_Value);
       end case;
 
-      --  TargetName               : Name_Value;
+      --  TargetName, Declarative, required when SessionType = Normal
+
+      case Decoded.TargetName.Kind is
+         when None =>
+            Set_Error_Missing_Parameter;
+
+         when Error =>
+            Append_Key_Value (TargetName_Key, Reject_Value);
+
+         when Value =>
+            TargetName := Decoded.TargetName.Value;
+      end case;
+
       --  InitiatorName            : Name_Value;
       --  TargetAlias              : Local_Name_Value;
       --  InitiatorAlias           : Local_Name_Value;
