@@ -1243,6 +1243,19 @@ package body iSCSI.Target.Login is
             Append_Key_Value (SendTargets_Key, Irrelevant_Value);
       end case;
 
+      --  TargetAlias, never send by initiator
+
+      case Decoded.TargetAlias.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (TargetAlias_Key, Reject_Value);
+
+         when Value =>
+            Append_Key_Value (TargetAlias_Key, Reject_Value);
+      end case;
+
       --  TargetName, Declarative, optional when SessionType = Discovery
 
       case Decoded.TargetName.Kind is
@@ -1256,7 +1269,6 @@ package body iSCSI.Target.Login is
             TargetName := Decoded.TargetName.Value;
       end case;
 
-      --  TargetAlias              : Local_Name_Value;
       --  InitiatorAlias           : Local_Name_Value;
       --  TargetAddress            : TargetAddress_Value;
       --  TargetPortalGroupTag     : Binary_Value_16;
@@ -1482,6 +1494,21 @@ package body iSCSI.Target.Login is
             Append_Key_Value (SendTargets_Key, Irrelevant_Value);
       end case;
 
+      --  TargetAlias, never send by initiator, should be communicated to
+      --  the initiator if configured.
+
+      case Decoded.TargetAlias.Kind is
+         when None =>
+            Append_Key_Value (TargetAlias_Key, "VG iSCSI target");
+            --  XXX Send it only when configured !!!
+
+         when Error =>
+            Append_Key_Value (TargetAlias_Key, Reject_Value);
+
+         when Value =>
+            Append_Key_Value (TargetAlias_Key, Reject_Value);
+      end case;
+
       --  TargetName, Declarative, required when SessionType = Normal
 
       case Decoded.TargetName.Kind is
@@ -1495,7 +1522,6 @@ package body iSCSI.Target.Login is
             TargetName := Decoded.TargetName.Value;
       end case;
 
-      --  TargetAlias              : Local_Name_Value;
       --  InitiatorAlias           : Local_Name_Value;
       --  TargetAddress            : TargetAddress_Value;
       --  TargetPortalGroupTag     : Binary_Value_16;
