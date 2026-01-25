@@ -915,7 +915,7 @@ package body iSCSI.Target.Login is
 
             elsif Key = MaxConnections_Key then
                Decode_Numerical_Value
-                 (Segment, 0, 65_535, Decoded.MaxConnections);
+                 (Segment, 1, 65_535, Decoded.MaxConnections);
 
             elsif Key = MaxOutstandingR2T_Key then
                Decode_Numerical_Value
