@@ -1212,7 +1212,19 @@ package body iSCSI.Target.Login is
             Append_Key_Value (MaxConnections_Key, Irrelevant_Value);
       end case;
 
-      --  SendTargets              : Name_Value;
+      --  SendTargets, irrelevant in Login Request
+
+      case Decoded.SendTargets.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (SendTargets_Key, Reject_Value);
+
+         when Value =>
+            Append_Key_Value (SendTargets_Key, Irrelevant_Value);
+      end case;
+
       --  TargetName               : Name_Value;
       --  InitiatorName            : Name_Value;
       --  TargetAlias              : Local_Name_Value;
@@ -1408,7 +1420,19 @@ package body iSCSI.Target.Login is
             Append_Key_Value (MaxConnections_Key, MaxConnections);
       end case;
 
-      --  SendTargets              : Name_Value;
+      --  SendTargets, irrelevant in Login Request
+
+      case Decoded.SendTargets.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (SendTargets_Key, Reject_Value);
+
+         when Value =>
+            Append_Key_Value (SendTargets_Key, Irrelevant_Value);
+      end case;
+
       --  TargetName               : Name_Value;
       --  InitiatorName            : Name_Value;
       --  TargetAlias              : Local_Name_Value;
