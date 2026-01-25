@@ -1121,6 +1121,7 @@ package body iSCSI.Target.Login is
       InitiatorName      : iSCSI.Text.Segment with Unreferenced;
       InitiatorAlias     : iSCSI.Text.Segment with Unreferenced;
       --  InitialR2T         : Boolean  := True;
+      --  ImmediateData      : Boolean := True;
 
    begin
       --  iSCSIProtocolLevel, irrelevant when SessionType = Discovery
@@ -1182,6 +1183,19 @@ package body iSCSI.Target.Login is
             else
                Append_Key_Value (HeaderDigest_Key, Reject_Value);
             end if;
+      end case;
+
+      --  ImmediateData, irrelevant when SessionType = Discovery
+
+      case Decoded.ImmediateData.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (ImmediateData_Key, Reject_Value);
+
+         when Value =>
+            Append_Key_Value (ImmediateData_Key, Irrelevant_Value);
       end case;
 
       --  InitialR2T, irrelevant when SessionType = Discovery
@@ -1306,7 +1320,6 @@ package body iSCSI.Target.Login is
             Set_Error_Initiator_Error;
       end case;
 
-      --  ImmediateData            : Boolean_Value;
       --  MaxRecvDataSegmentLength : Numerical_Value;
       --  MaxBurstLength           : Numerical_Value;
       --  FirstBurstLength         : Numerical_Value;
@@ -1381,6 +1394,7 @@ package body iSCSI.Target.Login is
 
       Configured_MaxConnections : constant := 1;
       Configured_InitialR2T     : constant Boolean := True;
+      Configured_ImmediateData  : constant Boolean := False;
 
       iSCSIProtocolLevel : Natural  := RFC7143;
       MaxConnections     : Positive := 1;
@@ -1388,6 +1402,7 @@ package body iSCSI.Target.Login is
       InitiatorName      : iSCSI.Text.Segment with Unreferenced;
       InitiatorAlias     : iSCSI.Text.Segment with Unreferenced;
       InitialR2T         : Boolean  := True;
+      ImmediateData      : Boolean := True;
 
    begin
       --  iSCSIProtocolLevel
@@ -1455,6 +1470,21 @@ package body iSCSI.Target.Login is
             else
                Append_Key_Value (HeaderDigest_Key, Reject_Value);
             end if;
+      end case;
+
+      --  ImmediateData
+
+      case Decoded.ImmediateData.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (ImmediateData_Key, Reject_Value);
+
+         when Value =>
+            ImmediateData :=
+              Configured_ImmediateData and Decoded.ImmediateData.Value;
+            Append_Key_Value (ImmediateData_Key, ImmediateData);
       end case;
 
       --  InitialR2T
@@ -1586,8 +1616,6 @@ package body iSCSI.Target.Login is
             Set_Error_Initiator_Error;
       end case;
 
-      --  InitialR2T               : Boolean_Value;
-      --  ImmediateData            : Boolean_Value;
       --  MaxRecvDataSegmentLength : Numerical_Value;
       --  MaxBurstLength           : Numerical_Value;
       --  FirstBurstLength         : Numerical_Value;
