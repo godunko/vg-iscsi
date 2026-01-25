@@ -1233,8 +1233,7 @@ package body iSCSI.Target.Login is
             Append_Key_Value (SendTargets_Key, Irrelevant_Value);
       end case;
 
-      --  TargetAddress, Declarative, never send by initiator, send by target
-      --  for redirection and on `SendTarget`
+      --  TargetAddress, never send by the initiator
 
       case Decoded.TargetAddress.Kind is
          when None =>
@@ -1247,7 +1246,7 @@ package body iSCSI.Target.Login is
             Append_Key_Value (TargetAddress_Key, Reject_Value);
       end case;
 
-      --  TargetAlias, never send by initiator
+      --  TargetAlias, never send by the initiator
 
       case Decoded.TargetAlias.Kind is
          when None =>
@@ -1510,8 +1509,7 @@ package body iSCSI.Target.Login is
             Append_Key_Value (SendTargets_Key, Irrelevant_Value);
       end case;
 
-      --  TargetAddress, Declarative, never send by initiator, send by target
-      --  for redirection and on `SendTarget`
+      --  TargetAddress, never send by the initiator
 
       case Decoded.TargetAddress.Kind is
          when None =>
@@ -1524,13 +1522,11 @@ package body iSCSI.Target.Login is
             Append_Key_Value (TargetAddress_Key, Reject_Value);
       end case;
 
-      --  TargetAlias, never send by initiator, should be communicated to
-      --  the initiator if configured.
+      --  TargetAlias, never send by the initiator
 
       case Decoded.TargetAlias.Kind is
          when None =>
-            Append_Key_Value (TargetAlias_Key, "VG iSCSI target");
-            --  XXX Send it only when configured !!!
+            null;
 
          when Error =>
             Append_Key_Value (TargetAlias_Key, Reject_Value);
@@ -1578,6 +1574,15 @@ package body iSCSI.Target.Login is
       --  X_NodeArchitecture       : List_Of_Values;
       --
       --  NotUnderstood            : Segment_Array (1 .. 8);
+
+      --  Send some parameters
+
+      Append_Key_Value (TargetAlias_Key, "VG iSCSI target");
+      --  XXX Send it only when configured !!!
+
+      --  Append_Key_Value (TargetAddress_Key, "127.0.0.1");
+      --  XXX Send on redirect and on `SendTargets` only
+
       raise Program_Error;
    end Validate_Normal_Session;
 
