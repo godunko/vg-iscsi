@@ -13,14 +13,21 @@ with iSCSI.PDUs;
 
 package body iSCSI.Target.Login is
 
+   PLUS_SIGN              : constant := 16#2B#;
+   SOLIDUS                : constant := 16#2F#;
    DIGIT_ZERO             : constant := 16#30#;
    DIGIT_NINE             : constant := 16#39#;
+   EQUALS_SIGN            : constant := 16#3D#;
    LATIN_CAPITAL_LETTER_A : constant := 16#41#;
+   LATIN_CAPITAL_LETTER_B : constant := 16#42#;
    LATIN_CAPITAL_LETTER_F : constant := 16#46#;
    LATIN_CAPITAL_LETTER_X : constant := 16#58#;
+   LATIN_CAPITAL_LETTER_Z : constant := 16#5A#;
    LATIN_SMALL_LETTER_A   : constant := 16#61#;
+   LATIN_SMALL_LETTER_B   : constant := 16#62#;
    LATIN_SMALL_LETTER_F   : constant := 16#66#;
    LATIN_SMALL_LETTER_X   : constant := 16#78#;
+   LATIN_SMALL_LETTER_Z   : constant := 16#7A#;
 
    DataDigest_String           : constant String := "DataDigest";
    DataPDUInOrder_String       : constant String := "DataPDUInOrder";
@@ -231,6 +238,11 @@ package body iSCSI.Target.Login is
    --    - illegal character in string
    --    - value out of given range
 
+   procedure Decode_Binary_Value_16_Value
+     (Segment : iSCSI.Text.Segment;
+      Decoded : out Binary_Value_16);
+   --  Decode `16-bit-binary-value`.
+
    procedure Decode_iSCSI_Name_Value
      (Image   : iSCSI.Text.Segment;
       Decoded : out Name_Value);
@@ -257,6 +269,179 @@ package body iSCSI.Target.Login is
       Decoded : out SessionType_Value);
    --  Decode `<Discovery|Normal>`
 
+   procedure Decode_SendTargets_Value
+     (Segment : iSCSI.Text.Segment;
+      Decoded : out SendTargets_Value);
+   --  Decode `SendTargets`
+
+   ----------------------------------
+   -- Decode_Binary_Value_16_Value --
+   ----------------------------------
+
+   procedure Decode_Binary_Value_16_Value
+     (Segment : iSCSI.Text.Segment;
+      Decoded : out Binary_Value_16)
+   is
+      use type A0B.Types.Unsigned_8;
+      use type A0B.Types.Unsigned_16;
+
+      Image : constant iSCSI.Text.UTF8_String :=
+        iSCSI.Text.Text (Segment);
+      Index : Positive := Image'First;
+      Digit : A0B.Types.Unsigned_16;
+
+   begin
+      Ada.Text_IO.Put_Line (To_String (Image));
+
+      if Image'Length = 0 then
+         Decoded := (Kind => Error);
+
+         return;
+      end if;
+
+      if Image'Length > 2
+        and then
+          (Image (Index) = DIGIT_ZERO
+             and Image (Index + 1)
+               in LATIN_CAPITAL_LETTER_B | LATIN_SMALL_LETTER_B)
+      then
+         --  `base64-constant`
+
+         --  XXX It is naive implementation, most probably it doesn't work as
+         --  expected:
+         --   * 16-bit value should be encoded as single 24-bits unit
+         --     (4 characters group): 3 characters followed by one '=' padding
+         --     character
+         --   * value is in big-endian format
+
+         Index   := @ + 2;
+         Decoded := (Kind => Value, Value => 0);
+
+         loop
+            if Image (Index)
+              in LATIN_CAPITAL_LETTER_A .. LATIN_CAPITAL_LETTER_Z
+            then
+               Digit :=
+                 A0B.Types.Unsigned_16
+                   (Image (Index) - LATIN_CAPITAL_LETTER_A);
+
+            elsif Image (Index)
+              in LATIN_SMALL_LETTER_A .. LATIN_SMALL_LETTER_Z
+            then
+               Digit :=
+                 A0B.Types.Unsigned_16
+                   (Image (Index) - LATIN_SMALL_LETTER_A + 26);
+
+            elsif Image (Index) in DIGIT_ZERO .. DIGIT_NINE then
+               Digit :=
+                 A0B.Types.Unsigned_16 (Image (Index) - DIGIT_ZERO + 52);
+
+            elsif Image (Index) = PLUS_SIGN then
+               Digit := 62;
+
+            elsif Image (Index) = SOLIDUS then
+               Digit := 63;
+
+            elsif Image (Index) = EQUALS_SIGN then
+               --  XXX It must appear only once, there is no check for invalid
+               --  length of the data.
+
+               return;
+
+            else
+               Decoded := (Kind => Error);
+
+               return;
+            end if;
+
+            if Decoded.Value > (A0B.Types.Unsigned_16'Last - Digit) / 64 then
+               Decoded := (Kind => Error);
+
+               return;
+            end if;
+
+            Decoded.Value := @ * 64 + Digit;
+            Index         := @ + 1;
+
+            exit when Index > Image'Last;
+         end loop;
+
+      elsif Image'Length > 2
+        and then
+          (Image (Index) = DIGIT_ZERO
+             and Image (Index + 1)
+               in LATIN_CAPITAL_LETTER_X | LATIN_SMALL_LETTER_X)
+      then
+         --  `hex-constant`
+
+         Index   := @ + 2;
+         Decoded := (Kind => Value, Value => 0);
+
+         loop
+            if Image (Index) in DIGIT_ZERO .. DIGIT_NINE then
+               Digit := A0B.Types.Unsigned_16 (Image (Index) - DIGIT_ZERO);
+
+            elsif Image (Index)
+              in LATIN_CAPITAL_LETTER_A .. LATIN_CAPITAL_LETTER_F
+            then
+               Digit :=
+                 A0B.Types.Unsigned_16
+                   (Image (Index) - LATIN_CAPITAL_LETTER_A + 10);
+
+            elsif Image (Index)
+              in LATIN_SMALL_LETTER_A .. LATIN_SMALL_LETTER_F
+            then
+               Digit :=
+                 A0B.Types.Unsigned_16
+                   (Image (Index) - LATIN_SMALL_LETTER_A + 10);
+
+            else
+               Decoded := (Kind => Error);
+
+               return;
+            end if;
+
+            if Decoded.Value > A0B.Types.Unsigned_16'Last / 16 then
+               Decoded := (Kind => Error);
+
+               return;
+            end if;
+
+            Decoded.Value := @ * 16 + Digit;
+            Index         := @ + 1;
+
+            exit when Index > Image'Last;
+         end loop;
+
+      else
+         --  `decimal-constant`
+
+         Decoded := (Kind => Value, Value => 0);
+
+         loop
+            if Image (Index) in DIGIT_ZERO .. DIGIT_NINE then
+               Digit := A0B.Types.Unsigned_16 (Image (Index) - DIGIT_ZERO);
+
+            else
+               Decoded := (Kind => Error);
+
+               return;
+            end if;
+
+            if Decoded.Value > (A0B.Types.Unsigned_16'Last - Digit) / 10 then
+               Decoded := (Kind => Error);
+
+               return;
+            end if;
+
+            Decoded.Value := @ * 10 + Digit;
+            Index         := @ + 1;
+
+            exit when Index > Image'Last;
+         end loop;
+      end if;
+   end Decode_Binary_Value_16_Value;
+
    --------------------------
    -- Decode_Boolean_Value --
    --------------------------
@@ -277,7 +462,7 @@ package body iSCSI.Target.Login is
          Decoded := (Kind => Value, Value => True);
 
       else
-         Decoded := (Kind => Reject);
+         Decoded := (Kind => Error);
       end if;
    end Decode_Boolean_Value;
 
@@ -333,7 +518,7 @@ package body iSCSI.Target.Login is
       Ada.Text_IO.Put_Line (To_String (Image));
 
       if Image'Length = 0 then
-         Decoded := (Kind => Reject);
+         Decoded := (Kind => Error);
 
          return;
       end if;
@@ -368,13 +553,13 @@ package body iSCSI.Target.Login is
                    (Image (Index) - LATIN_SMALL_LETTER_A + 10);
 
             else
-               Decoded := (Kind => Reject);
+               Decoded := (Kind => Error);
 
                return;
             end if;
 
             if Decoded.Value > A0B.Types.Unsigned_64'Last / 16 then
-               Decoded := (Kind => Reject);
+               Decoded := (Kind => Error);
 
                return;
             end if;
@@ -395,13 +580,13 @@ package body iSCSI.Target.Login is
                Digit := A0B.Types.Unsigned_64 (Image (Index) - DIGIT_ZERO);
 
             else
-               Decoded := (Kind => Reject);
+               Decoded := (Kind => Error);
 
                return;
             end if;
 
             if Decoded.Value > (A0B.Types.Unsigned_64'Last - Digit) / 10 then
-               Decoded := (Kind => Reject);
+               Decoded := (Kind => Error);
 
                return;
             end if;
@@ -433,9 +618,17 @@ package body iSCSI.Target.Login is
       if Decoded.Kind = Value
         and then Decoded.Value not in First .. Last
       then
-         Decoded := (Kind => Reject);
+         Decoded := (Kind => Error);
       end if;
    end Decode_Numerical_Value;
+
+   ------------------------------
+   -- Decode_SendTargets_Value --
+   ------------------------------
+
+   procedure Decode_SendTargets_Value
+     (Segment : iSCSI.Text.Segment;
+      Decoded : out SendTargets_Value) renames Decode_iSCSI_Name_Value;
 
    ------------------------------
    -- Decode_SessionType_Value --
@@ -688,25 +881,24 @@ package body iSCSI.Target.Login is
                Decode_Numerical_Value (Segment, 1, 65_535, Decoded.OFMarkInt);
 
             elsif Key = SendTargets_Key then
-               raise Program_Error;
+               Decode_SendTargets_Value (Segment, Decoded.SendTargets);
 
             elsif Key = SessionType_Key then
                SessionType_Value := Value;
                Decode_SessionType_Value (Segment, Decoded.SessionType);
 
             elsif Key = TargetAddress_Key then
-               --  Decode_TargetAddress_Value (Segment, Decoded.TargetAddress);
-               raise Program_Error;
+               Decode_TargetAddress_Value (Segment, Decoded.TargetAddress);
 
             elsif Key = TargetAlias_Key then
-               --  Decode_iSCSI_Local_Name_Value (Segment, Decoded.TargetAlias);
-               raise Program_Error;
+               Decode_iSCSI_Local_Name_Value (Segment, Decoded.TargetAlias);
 
             elsif Key = TargetName_Key then
                Decode_iSCSI_Name_Value (Segment, Decoded.TargetName);
 
             elsif Key = TargetPortalGroupTag_Key then
-               raise Program_Error;
+               Decode_Binary_Value_16_Value
+                 (Segment, Decoded.TargetPortalGroupTag);
 
             elsif Key = TaskReporting_Key then
                raise Program_Error;
@@ -777,7 +969,7 @@ package body iSCSI.Target.Login is
       elsif iSCSIProtocolLevel.Kind = Value
         and then iSCSIProtocolLevel.Value not in 0 .. 2
       then
-         iSCSIProtocolLevel := (Kind => Reject);
+         iSCSIProtocolLevel := (Kind => Error);
       end if;
 
       --  DataDigest
@@ -821,7 +1013,7 @@ package body iSCSI.Target.Login is
       elsif DefaultTime2Retain.Kind = Value
         and then DefaultTime2Retain.Value not in 0 .. 3_600
       then
-         DefaultTime2Retain := (Kind => Reject);
+         DefaultTime2Retain := (Kind => Error);
       end if;
 
       --  DefaultTime2Wait
@@ -832,7 +1024,7 @@ package body iSCSI.Target.Login is
       elsif DefaultTime2Wait.Kind = Value
         and then DefaultTime2Wait.Value not in 0 .. 3_600
       then
-         DefaultTime2Wait := (Kind => Reject);
+         DefaultTime2Wait := (Kind => Error);
       end if;
 
       --  IFMarker                 : Boolean_Value;
@@ -870,7 +1062,7 @@ package body iSCSI.Target.Login is
          when None =>
             null;
 
-         when Reject =>
+         when Error =>
             Append_Key_Value (DefaultTime2Retain_Key, Reject_Value);
 
          when Value =>
@@ -882,7 +1074,7 @@ package body iSCSI.Target.Login is
          when None =>
             null;
 
-         when Reject =>
+         when Error =>
             Append_Key_Value (DefaultTime2Wait_Key, Reject_Value);
 
          when Value =>
@@ -899,7 +1091,7 @@ package body iSCSI.Target.Login is
          when None =>
             null;
 
-         when Reject =>
+         when Error =>
             Append_Key_Value (iSCSIProtocolLevel_Key, Reject_Value);
 
          when Value =>
