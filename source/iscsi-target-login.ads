@@ -108,6 +108,8 @@ package iSCSI.Target.Login is
       end case;
    end record;
 
+   type Segment_Array is array (Positive range <>) of iSCSI.Text.Segment;
+
    type Decoded_Operational_Parameters is record
       --  [RFC3720]
 
@@ -146,6 +148,8 @@ package iSCSI.Target.Login is
       TaskReporting            : List_Of_Values;
       iSCSIProtocolLevel       : Numerical_Value;
       X_NodeArchitecture       : List_Of_Values;
+
+      NotUnderstood            : Segment_Array (1 .. 8);
    end record;
 
    type Login_Handler is private;

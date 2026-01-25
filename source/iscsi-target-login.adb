@@ -913,24 +913,48 @@ package body iSCSI.Target.Login is
                               .. Key'First + X_Minus_Prefix_Key'Length - 1)
                          = X_Minus_Prefix_Key
             then
-               raise Program_Error;
+               for J in Decoded.NotUnderstood'Range loop
+                  if iSCSI.Text.Is_Null (Decoded.NotUnderstood (J)) then
+                     Decoded.NotUnderstood (J) := iSCSI.Text.Key (Parser);
+
+                     exit;
+                  end if;
+               end loop;
 
             elsif Key'Length >= Y_Minus_Prefix_Key'Length
               and then Key (Key'First
                               .. Key'First + Y_Minus_Prefix_Key'Length - 1)
                          = Y_Minus_Prefix_Key
             then
-               raise Program_Error;
+               for J in Decoded.NotUnderstood'Range loop
+                  if iSCSI.Text.Is_Null (Decoded.NotUnderstood (J)) then
+                     Decoded.NotUnderstood (J) := iSCSI.Text.Key (Parser);
+
+                     exit;
+                  end if;
+               end loop;
 
             elsif Key'Length >= Z_Minus_Prefix_Key'Length
               and then Key (Key'First
                               .. Key'First + Z_Minus_Prefix_Key'Length - 1)
                          = Z_Minus_Prefix_Key
             then
-               raise Program_Error;
+               for J in Decoded.NotUnderstood'Range loop
+                  if iSCSI.Text.Is_Null (Decoded.NotUnderstood (J)) then
+                     Decoded.NotUnderstood (J) := iSCSI.Text.Key (Parser);
+
+                     exit;
+                  end if;
+               end loop;
 
             else
-               raise Program_Error;
+               for J in Decoded.NotUnderstood'Range loop
+                  if iSCSI.Text.Is_Null (Decoded.NotUnderstood (J)) then
+                     Decoded.NotUnderstood (J) := iSCSI.Text.Key (Parser);
+
+                     exit;
+                  end if;
+               end loop;
             end if;
          end;
       end loop;
