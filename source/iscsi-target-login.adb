@@ -379,7 +379,7 @@ package body iSCSI.Target.Login is
                return;
             end if;
 
-            Decoded.Value := @ + Digit;
+            Decoded.Value := @ * 16 + Digit;
             Index         := @ + 1;
 
             exit when Index > Image'Last;
@@ -406,7 +406,7 @@ package body iSCSI.Target.Login is
                return;
             end if;
 
-            Decoded.Value := @ + Digit;
+            Decoded.Value := @ * 10 + Digit;
             Index         := @ + 1;
 
             exit when Index > Image'Last;
