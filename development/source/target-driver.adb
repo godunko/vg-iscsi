@@ -14,6 +14,7 @@ with System.Storage_Elements;
 with A0B.Types;
 
 with iSCSI.PDUs;
+with iSCSI.Target.Login;
 with iSCSI.Text;
 with iSCSI.Types;
 
@@ -69,6 +70,8 @@ procedure Target.Driver is
    Data_Storage   : Ada.Streams.Stream_Element_Array (0 .. 65_535);
    Data_Last      : Ada.Streams.Stream_Element_Offset;
 
+   Response_Storage : Ada.Streams.Stream_Element_Array (0 .. 65_535);
+
 begin
    GNAT.Sockets.Create_Socket (Listen_Socket);
 
@@ -106,9 +109,28 @@ begin
    end if;
 
    declare
+      Header : iSCSI.PDUs.Login_Request_Header
+        with Import, Address => Header_Storage'Address;
       Parser : iSCSI.Text.Parser;
 
    begin
+      Put_Line ("  Immediate          : " & Header.Immediate'Image);
+      Put_Line ("  OpCode             :" & Header.Opcode'Image);
+      Put_Line ("  Transit            : " & Header.Transit'Image);
+      Put_Line ("  Continue           : " & Header.Continue'Image);
+      Put_Line ("  CSG                :" & Header.CSG'Image);
+      Put_Line ("  NSG                :" & Header.NSG'Image);
+      Put_Line ("  Version-max        :" & Header.Version_Max'Image);
+      Put_Line ("  Version-min        :" & Header.Version_Min'Image);
+      Put_Line ("  TotalAHSLength     :" & Header.TotalAHSLength'Image);
+      Put_Line ("  DataSegmentLength  :" & Header.DataSegmentLength'Image);
+      Put_Line ("  ISID               :" & Header.ISID'Image);
+      Put_Line ("  TSIH               :" & Header.TSIH'Image);
+      Put_Line ("  Initiator Task Tag :" & Header.Initiator_Task_Tag'Image);
+      Put_Line ("  CID                :" & Header.CID'Image);
+      Put_Line ("  CmdSN              :" & Header.CmdSN'Image);
+      Put_Line ("  ExpStatSN          :" & Header.ExpStatSN'Image);
+
       iSCSI.Text.Initialize
         (Parser,
          Data_Storage'Address,
@@ -116,8 +138,6 @@ begin
            (Basic_Header.DataSegmentLength));
 
       while iSCSI.Text.Forward (Parser) loop
-         --  Ada.Text_IO.Put_Line (To_String (iSCSI.Text.Key (Parser)));
-         --  Ada.Text_IO.Put_Line (To_String (iSCSI.Text.Value (Parser)));
          Ada.Text_IO.Put (''');
          Ada.Text_IO.Put
            (To_String (iSCSI.Text.Text (iSCSI.Text.Key (Parser))));
@@ -127,6 +147,12 @@ begin
          Ada.Text_IO.Put_Line ("'");
       end loop;
    end;
+
+   iSCSI.Target.Login.Process
+     (Header_Address        => Header_Storage'Address,
+      Request_Data_Address  => Data_Storage'Address,
+      Response_Data_Address => Response_Storage'Address);
+
    --  case Basic_Header.Opcode is
    --     when iSCSI.Types.Login_Request =>
    --        raise Program_Error;
