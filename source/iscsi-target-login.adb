@@ -1118,6 +1118,9 @@ package body iSCSI.Target.Login is
         (Key   : iSCSI.Text.UTF8_String;
          Value : iSCSI.Text.UTF8_String);
 
+      procedure Set_Error_Missing_Parameter is null;
+      --  XXX Set error code to 0207 "Missing parameters"
+
       ----------------------
       -- Append_Key_Value --
       ----------------------
@@ -1137,6 +1140,7 @@ package body iSCSI.Target.Login is
       --  iSCSIProtocolLevel : Natural  := 1;
       --  MaxConnections     : Positive := 1;
       TargetName         : iSCSI.Text.Segment with Unreferenced;
+      InitiatorName      : iSCSI.Text.Segment with Unreferenced;
 
    begin
       --  iSCSIProtocolLevel, irrelevant when SessionType = Discovery
@@ -1200,6 +1204,19 @@ package body iSCSI.Target.Login is
             end if;
       end case;
 
+      --  InitiatorName, Declarative, must be provided
+
+      case Decoded.InitiatorName.Kind is
+         when None =>
+            Set_Error_Missing_Parameter;
+
+         when Error =>
+            Append_Key_Value (InitiatorName_Key, Reject_Value);
+
+         when Value =>
+            InitiatorName := Decoded.InitiatorName.Value;
+      end case;
+
       --  MaxConnections, irrelevant when SessionType = Discovery
 
       case Decoded.MaxConnections.Kind is
@@ -1239,7 +1256,6 @@ package body iSCSI.Target.Login is
             TargetName := Decoded.TargetName.Value;
       end case;
 
-      --  InitiatorName            : Name_Value;
       --  TargetAlias              : Local_Name_Value;
       --  InitiatorAlias           : Local_Name_Value;
       --  TargetAddress            : TargetAddress_Value;
@@ -1353,6 +1369,7 @@ package body iSCSI.Target.Login is
       iSCSIProtocolLevel : Natural  := RFC7143;
       MaxConnections     : Positive := 1;
       TargetName         : iSCSI.Text.Segment with Unreferenced;
+      InitiatorName      : iSCSI.Text.Segment with Unreferenced;
 
    begin
       --  iSCSIProtocolLevel
@@ -1422,6 +1439,19 @@ package body iSCSI.Target.Login is
             end if;
       end case;
 
+      --  InitiatorName, Declarative, must be provided
+
+      case Decoded.InitiatorName.Kind is
+         when None =>
+            Set_Error_Missing_Parameter;
+
+         when Error =>
+            Append_Key_Value (InitiatorName_Key, Reject_Value);
+
+         when Value =>
+            InitiatorName := Decoded.InitiatorName.Value;
+      end case;
+
       --  MaxConnections
 
       case Decoded.MaxConnections.Kind is
@@ -1465,7 +1495,6 @@ package body iSCSI.Target.Login is
             TargetName := Decoded.TargetName.Value;
       end case;
 
-      --  InitiatorName            : Name_Value;
       --  TargetAlias              : Local_Name_Value;
       --  InitiatorAlias           : Local_Name_Value;
       --  TargetAddress            : TargetAddress_Value;
