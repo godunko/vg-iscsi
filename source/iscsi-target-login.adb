@@ -274,6 +274,14 @@ package body iSCSI.Target.Login is
       Decoded : out SendTargets_Value);
    --  Decode `SendTargets`
 
+   procedure Validate (Decoded : Decoded_Operational_Parameters);
+
+   procedure Validate_Discovery_Session
+     (Decoded : Decoded_Operational_Parameters);
+
+   procedure Validate_Normal_Session
+     (Decoded : Decoded_Operational_Parameters);
+
    ----------------------------------
    -- Decode_Binary_Value_16_Value --
    ----------------------------------
@@ -733,16 +741,12 @@ package body iSCSI.Target.Login is
         with Import, Address => Header_Address;
       Parser : iSCSI.Text.Parser;
 
-      type Session_Type_Kinds is (Default, Reject, Discovery, Normal);
-
       type Digest_Kinds is (Reject, None);
 
       DataDigest_Value     : Optional_Slice;
       HeaderDigest_Value   : Optional_Slice;
       InitiatorName_Value  : Optional_Slice;
-      SessionType_Value    : Optional_Slice;
 
-      Session_Type             : Session_Type_Kinds := Default;
       Header_Digest            : Digest_Kinds := None;
       Data_Digest              : Digest_Kinds := None;
       DefaultTime2Retain       : Numerical_Value;
@@ -886,7 +890,6 @@ package body iSCSI.Target.Login is
                Decode_SendTargets_Value (Segment, Decoded.SendTargets);
 
             elsif Key = SessionType_Key then
-               SessionType_Value := Value;
                Decode_SessionType_Value (Segment, Decoded.SessionType);
 
             elsif Key = TargetAddress_Key then
@@ -962,25 +965,6 @@ package body iSCSI.Target.Login is
       --
       --  Validation
       --
-
-      --  SessionType
-
-      if SessionType_Value.Is_Specified then
-         if SessionType_Value.Value = Discovery_Value then
-            Session_Type := Discovery;
-
-         elsif SessionType_Value.Value = Normal_Value then
-            Session_Type := Normal;
-
-         else
-            Session_Type := Reject;
-
-            Append_Key_Value (SessionType_Key, Reject_Value);
-
-            raise Program_Error;
-            --  XXX 0209 Session type not supported !!!
-         end if;
-      end if;
 
       --  iSCSIProtocolLevel
 
@@ -1124,6 +1108,10 @@ package body iSCSI.Target.Login is
             Append_Key_Value
               (iSCSIProtocolLevel_Key, iSCSIProtocolLevel.Value);
       end case;
+
+      --
+
+      Validate (Decoded);
    end Process;
 
    ---------------
@@ -1137,5 +1125,85 @@ package body iSCSI.Target.Login is
    begin
       return Result;
    end To_String;
+
+   --------------
+   -- Validate --
+   --------------
+
+   procedure Validate (Decoded : Decoded_Operational_Parameters) is
+
+      procedure Set_Error_Session_Type_Not_Supported is null;
+      --  XXX Set 0209 "Session type not supported" code !!!
+
+      procedure Append_Key_Value
+        (Key   : iSCSI.Text.UTF8_String;
+         Value : iSCSI.Text.UTF8_String);
+
+      ----------------------
+      -- Append_Key_Value --
+      ----------------------
+
+      procedure Append_Key_Value
+        (Key   : iSCSI.Text.UTF8_String;
+         Value : iSCSI.Text.UTF8_String) is
+      begin
+         Ada.Text_IO.Put ('`');
+         Ada.Text_IO.Put (To_String (Key));
+         Ada.Text_IO.Put ("` => `");
+         Ada.Text_IO.Put (To_String (Value));
+         Ada.Text_IO.Put ('`');
+         Ada.Text_IO.New_Line;
+      end Append_Key_Value;
+
+      SessionType : iSCSI.Target.Login.SessionType := Normal;
+
+   begin
+      --  SessionType
+      --
+      --  Declarative: no target's response, except value decode error
+
+      case Decoded.SessionType.Kind is
+         when None =>
+            --  Default
+
+            null;
+
+         when Error =>
+            Append_Key_Value (SessionType_Key, Reject_Value);
+
+            Set_Error_Session_Type_Not_Supported;
+
+         when Value =>
+            SessionType := Decoded.SessionType.Value;
+      end case;
+
+      case SessionType is
+         when Discovery =>
+            Validate_Discovery_Session (Decoded);
+
+         when Normal =>
+            Validate_Normal_Session (Decoded);
+      end case;
+   end Validate;
+
+   --------------------------------
+   -- Validate_Discovery_Session --
+   --------------------------------
+
+   procedure Validate_Discovery_Session
+     (Decoded : Decoded_Operational_Parameters) is
+   begin
+      raise Program_Error;
+   end Validate_Discovery_Session;
+
+   -----------------------------
+   -- Validate_Normal_Session --
+   -----------------------------
+
+   procedure Validate_Normal_Session
+     (Decoded : Decoded_Operational_Parameters) is
+   begin
+      raise Program_Error;
+   end Validate_Normal_Session;
 
 end iSCSI.Target.Login;
