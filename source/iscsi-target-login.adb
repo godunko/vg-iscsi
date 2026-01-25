@@ -13,6 +13,12 @@ with iSCSI.PDUs;
 
 package body iSCSI.Target.Login is
 
+   Configured_MaxConnections           : constant := 1;
+   Configured_InitialR2T               : constant Boolean := True;
+   Configured_ImmediateData            : constant Boolean := False;
+   Configured_MaxRecvDataSegmentLength : constant := 8_192;
+   Configured_MaxBurstLength           : constant := 262_144;
+
    PLUS_SIGN              : constant := 16#2B#;
    SOLIDUS                : constant := 16#2F#;
    DIGIT_ZERO             : constant := 16#30#;
@@ -280,6 +286,10 @@ package body iSCSI.Target.Login is
      (Key   : iSCSI.Text.UTF8_String;
       Value : Natural);
 
+   procedure Append_Key_Value
+     (Key   : iSCSI.Text.UTF8_String;
+      Value : A0B.Types.Unsigned_24);
+
    procedure Set_Error_Initiator_Error is null;
    --  XXX Set error code to 2000 "Initiator error"
 
@@ -338,6 +348,22 @@ package body iSCSI.Target.Login is
       Value : Natural)
    is
       Image_String : constant String := Natural'Image (Value);
+      Image        : constant iSCSI.Text.UTF8_String (Image_String'Range)
+        with Import, Address => Image_String'Address;
+
+   begin
+      Append_Key_Value (Key, Image (Image'First + 1 .. Image'Last));
+   end Append_Key_Value;
+
+   ----------------------
+   -- Append_Key_Value --
+   ----------------------
+
+   procedure Append_Key_Value
+     (Key   : iSCSI.Text.UTF8_String;
+      Value : A0B.Types.Unsigned_24)
+   is
+      Image_String : constant String := A0B.Types.Unsigned_24'Image (Value);
       Image        : constant iSCSI.Text.UTF8_String (Image_String'Range)
         with Import, Address => Image_String'Address;
 
@@ -1115,13 +1141,20 @@ package body iSCSI.Target.Login is
    is
       use type iSCSI.Text.Segment;
 
-      --  iSCSIProtocolLevel : Natural  := 1;
-      --  MaxConnections     : Positive := 1;
-      TargetName         : iSCSI.Text.Segment with Unreferenced;
-      InitiatorName      : iSCSI.Text.Segment with Unreferenced;
-      InitiatorAlias     : iSCSI.Text.Segment with Unreferenced;
-      --  InitialR2T         : Boolean  := True;
-      --  ImmediateData      : Boolean := True;
+      --  iSCSIProtocolLevel                 : Natural  := RFC7143;
+      --  MaxConnections                     : Positive := 1;
+      TargetName                         : iSCSI.Text.Segment
+        with Unreferenced;
+      InitiatorName                      : iSCSI.Text.Segment
+        with Unreferenced;
+      InitiatorAlias                     : iSCSI.Text.Segment
+        with Unreferenced;
+      --  InitialR2T                         : Boolean  := True;
+      --  ImmediateData                      : Boolean := True;
+      Initiator_MaxRecvDataSegmentLength : A0B.Types.Unsigned_24 := 8_192
+        with Unreferenced;
+      Target_MaxRecvDataSegmentLength    : A0B.Types.Unsigned_24 := 8_192;
+      --  MaxBurstLength                     : A0B.Types.Unsigned_24 := 262_144;
 
    begin
       --  iSCSIProtocolLevel, irrelevant when SessionType = Discovery
@@ -1237,6 +1270,19 @@ package body iSCSI.Target.Login is
             InitiatorName := Decoded.InitiatorName.Value;
       end case;
 
+      --  MaxBurstLength, irrelevant when SessionType = Discovery
+
+      case Decoded.MaxBurstLength.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (MaxBurstLength_Key, Reject_Value);
+
+         when Value =>
+            Append_Key_Value (MaxBurstLength_Key, Irrelevant_Value);
+      end case;
+
       --  MaxConnections, irrelevant when SessionType = Discovery
 
       case Decoded.MaxConnections.Kind is
@@ -1248,6 +1294,20 @@ package body iSCSI.Target.Login is
 
          when Value =>
             Append_Key_Value (MaxConnections_Key, Irrelevant_Value);
+      end case;
+
+      --  MaxRecvDataSegmentLength, Declarative
+
+      case Decoded.MaxRecvDataSegmentLength.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (MaxRecvDataSegmentLength_Key, Reject_Value);
+
+         when Value =>
+            Initiator_MaxRecvDataSegmentLength :=
+              A0B.Types.Unsigned_24 (Decoded.MaxRecvDataSegmentLength.Value);
       end case;
 
       --  SendTargets, irrelevant in Login Request
@@ -1355,7 +1415,14 @@ package body iSCSI.Target.Login is
       --  XXX Send on redirect and on `SendTargets` only
 
       if Decoded.TargetPortalGroupTag.Kind = None then
-         Append_Key_Value (TargetPortalGroupTag_Key, 1);
+         Append_Key_Value (TargetPortalGroupTag_Key, Natural'(1));
+      end if;
+
+      if Decoded.MaxRecvDataSegmentLength.Kind /= Error then
+         Target_MaxRecvDataSegmentLength :=
+           Configured_MaxRecvDataSegmentLength;
+         Append_Key_Value
+           (MaxRecvDataSegmentLength_Key, Target_MaxRecvDataSegmentLength);
       end if;
 
       raise Program_Error;
@@ -1392,17 +1459,20 @@ package body iSCSI.Target.Login is
       RFC7143 : constant := 1;
       RFC7144 : constant := 2;
 
-      Configured_MaxConnections : constant := 1;
-      Configured_InitialR2T     : constant Boolean := True;
-      Configured_ImmediateData  : constant Boolean := False;
-
-      iSCSIProtocolLevel : Natural  := RFC7143;
-      MaxConnections     : Positive := 1;
-      TargetName         : iSCSI.Text.Segment with Unreferenced;
-      InitiatorName      : iSCSI.Text.Segment with Unreferenced;
-      InitiatorAlias     : iSCSI.Text.Segment with Unreferenced;
-      InitialR2T         : Boolean  := True;
-      ImmediateData      : Boolean := True;
+      iSCSIProtocolLevel                 : Natural  := RFC7143;
+      MaxConnections                     : Positive := 1;
+      TargetName                         : iSCSI.Text.Segment
+        with Unreferenced;
+      InitiatorName                      : iSCSI.Text.Segment
+        with Unreferenced;
+      InitiatorAlias                     : iSCSI.Text.Segment
+        with Unreferenced;
+      InitialR2T                         : Boolean  := True;
+      ImmediateData                      : Boolean := True;
+      Initiator_MaxRecvDataSegmentLength : A0B.Types.Unsigned_24 := 8_192
+        with Unreferenced;
+      Target_MaxRecvDataSegmentLength    : A0B.Types.Unsigned_24 := 8_192;
+      MaxBurstLength                     : A0B.Types.Unsigned_24 := 262_144;
 
    begin
       --  iSCSIProtocolLevel
@@ -1528,6 +1598,24 @@ package body iSCSI.Target.Login is
             InitiatorName := Decoded.InitiatorName.Value;
       end case;
 
+      --  MaxBurstLength
+
+      case Decoded.MaxBurstLength.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (MaxBurstLength_Key, Reject_Value);
+
+         when Value =>
+            MaxBurstLength :=
+              A0B.Types.Unsigned_24'Min
+                (Configured_MaxBurstLength,
+                 A0B.Types.Unsigned_24
+                   (Decoded.MaxBurstLength.Value));
+            Append_Key_Value (MaxBurstLength_Key, MaxBurstLength);
+      end case;
+
       --  MaxConnections
 
       case Decoded.MaxConnections.Kind is
@@ -1543,6 +1631,20 @@ package body iSCSI.Target.Login is
                 (Positive (Decoded.MaxConnections.Value),
                  Configured_MaxConnections);
             Append_Key_Value (MaxConnections_Key, MaxConnections);
+      end case;
+
+      --  MaxRecvDataSegmentLength, Declarative
+
+      case Decoded.MaxRecvDataSegmentLength.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (MaxRecvDataSegmentLength_Key, Reject_Value);
+
+         when Value =>
+            Initiator_MaxRecvDataSegmentLength :=
+              A0B.Types.Unsigned_24 (Decoded.MaxRecvDataSegmentLength.Value);
       end case;
 
       --  SendTargets, irrelevant in Login Request
@@ -1616,8 +1718,6 @@ package body iSCSI.Target.Login is
             Set_Error_Initiator_Error;
       end case;
 
-      --  MaxRecvDataSegmentLength : Numerical_Value;
-      --  MaxBurstLength           : Numerical_Value;
       --  FirstBurstLength         : Numerical_Value;
       --  DefaultTime2Wait         : Numerical_Value;
       --  DefaultTime2Retain       : Numerical_Value;
@@ -1651,7 +1751,14 @@ package body iSCSI.Target.Login is
       --  XXX Send on redirect and on `SendTargets` only
 
       if Decoded.TargetPortalGroupTag.Kind = None then
-         Append_Key_Value (TargetPortalGroupTag_Key, 1);
+         Append_Key_Value (TargetPortalGroupTag_Key, Natural'(1));
+      end if;
+
+      if Decoded.MaxRecvDataSegmentLength.Kind /= Error then
+         Target_MaxRecvDataSegmentLength :=
+           Configured_MaxRecvDataSegmentLength;
+         Append_Key_Value
+           (MaxRecvDataSegmentLength_Key, Target_MaxRecvDataSegmentLength);
       end if;
 
       raise Program_Error;
