@@ -274,6 +274,10 @@ package body iSCSI.Target.Login is
 
    procedure Append_Key_Value
      (Key   : iSCSI.Text.UTF8_String;
+      Value : Boolean);
+
+   procedure Append_Key_Value
+     (Key   : iSCSI.Text.UTF8_String;
       Value : Natural);
 
    procedure Set_Error_Initiator_Error is null;
@@ -311,6 +315,18 @@ package body iSCSI.Target.Login is
       Ada.Text_IO.Put (To_String (Value));
       Ada.Text_IO.Put ('`');
       Ada.Text_IO.New_Line;
+   end Append_Key_Value;
+
+   ----------------------
+   -- Append_Key_Value --
+   ----------------------
+
+   procedure Append_Key_Value
+     (Key   : iSCSI.Text.UTF8_String;
+      Value : Boolean) is
+   begin
+      Append_Key_Value
+        (Key, (case Value is when False => No_Value, when True => Yes_Value));
    end Append_Key_Value;
 
    ----------------------
@@ -1104,6 +1120,7 @@ package body iSCSI.Target.Login is
       TargetName         : iSCSI.Text.Segment with Unreferenced;
       InitiatorName      : iSCSI.Text.Segment with Unreferenced;
       InitiatorAlias     : iSCSI.Text.Segment with Unreferenced;
+      --  InitialR2T         : Boolean  := True;
 
    begin
       --  iSCSIProtocolLevel, irrelevant when SessionType = Discovery
@@ -1165,6 +1182,19 @@ package body iSCSI.Target.Login is
             else
                Append_Key_Value (HeaderDigest_Key, Reject_Value);
             end if;
+      end case;
+
+      --  InitialR2T, irrelevant when SessionType = Discovery
+
+      case Decoded.InitialR2T.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (InitialR2T_Key, Reject_Value);
+
+         when Value =>
+            Append_Key_Value (InitialR2T_Key, Irrelevant_Value);
       end case;
 
       --  InitiatorAlias, Declarative, optional
@@ -1276,7 +1306,6 @@ package body iSCSI.Target.Login is
             Set_Error_Initiator_Error;
       end case;
 
-      --  InitialR2T               : Boolean_Value;
       --  ImmediateData            : Boolean_Value;
       --  MaxRecvDataSegmentLength : Numerical_Value;
       --  MaxBurstLength           : Numerical_Value;
@@ -1350,13 +1379,15 @@ package body iSCSI.Target.Login is
       RFC7143 : constant := 1;
       RFC7144 : constant := 2;
 
-      Maximum_Connections : constant := 1;
+      Configured_MaxConnections : constant := 1;
+      Configured_InitialR2T     : constant Boolean := True;
 
       iSCSIProtocolLevel : Natural  := RFC7143;
       MaxConnections     : Positive := 1;
       TargetName         : iSCSI.Text.Segment with Unreferenced;
       InitiatorName      : iSCSI.Text.Segment with Unreferenced;
       InitiatorAlias     : iSCSI.Text.Segment with Unreferenced;
+      InitialR2T         : Boolean  := True;
 
    begin
       --  iSCSIProtocolLevel
@@ -1426,6 +1457,21 @@ package body iSCSI.Target.Login is
             end if;
       end case;
 
+      --  InitialR2T
+
+      case Decoded.InitialR2T.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (InitialR2T_Key, Reject_Value);
+
+         when Value =>
+            InitialR2T :=
+              Configured_InitialR2T or Decoded.InitialR2T.Value;
+            Append_Key_Value (InitialR2T_Key, InitialR2T);
+      end case;
+
       --  InitiatorAlias, Declarative, optional
 
       case Decoded.InitiatorAlias.Kind is
@@ -1465,7 +1511,7 @@ package body iSCSI.Target.Login is
             MaxConnections :=
               Positive'Min
                 (Positive (Decoded.MaxConnections.Value),
-                 Maximum_Connections);
+                 Configured_MaxConnections);
             Append_Key_Value (MaxConnections_Key, MaxConnections);
       end case;
 
