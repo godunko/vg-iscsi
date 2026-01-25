@@ -18,6 +18,7 @@ package body iSCSI.Target.Login is
    Configured_ImmediateData            : constant Boolean := False;
    Configured_MaxRecvDataSegmentLength : constant := 8_192;
    Configured_MaxBurstLength           : constant := 262_144;
+   Configured_FirstBurstLength         : constant := 65_536;
 
    PLUS_SIGN              : constant := 16#2B#;
    SOLIDUS                : constant := 16#2F#;
@@ -1155,6 +1156,7 @@ package body iSCSI.Target.Login is
         with Unreferenced;
       Target_MaxRecvDataSegmentLength    : A0B.Types.Unsigned_24 := 8_192;
       --  MaxBurstLength                     : A0B.Types.Unsigned_24 := 262_144;
+      --  FirstBurstLength                   : A0B.Types.Unsigned_24 := 65_536;
 
    begin
       --  iSCSIProtocolLevel, irrelevant when SessionType = Discovery
@@ -1168,54 +1170,6 @@ package body iSCSI.Target.Login is
 
          when Value =>
             Append_Key_Value (iSCSIProtocolLevel_Key, Irrelevant_Value);
-      end case;
-
-      --  DataDigest
-      --
-      --  XXX Doesn't support list of values.
-      --  XXX Accept `None` only.
-      --  XXX Share code with `Discovery` session processing.
-
-      case Decoded.DataDigest.Kind is
-         when None =>
-            null;
-
-         when Error =>
-            Append_Key_Value (DataDigest_Key, Reject_Value);
-
-            --  XXX Should error be reported ???
-
-         when Value =>
-            if Decoded.DataDigest.Value = None_Value then
-               Append_Key_Value (DataDigest_Key, None_Value);
-
-            else
-               Append_Key_Value (DataDigest_Key, Reject_Value);
-            end if;
-      end case;
-
-      --  HeaderDigest
-      --
-      --  XXX Doesn't support list of values.
-      --  XXX Accept `None` only.
-      --  XXX Share code with `Normal` session processing.
-
-      case Decoded.HeaderDigest.Kind is
-         when None =>
-            null;
-
-         when Error =>
-            Append_Key_Value (HeaderDigest_Key, Reject_Value);
-
-            --  XXX Should error be reported ???
-
-         when Value =>
-            if Decoded.HeaderDigest.Value = None_Value then
-               Append_Key_Value (HeaderDigest_Key, None_Value);
-
-            else
-               Append_Key_Value (HeaderDigest_Key, Reject_Value);
-            end if;
       end case;
 
       --  ImmediateData, irrelevant when SessionType = Discovery
@@ -1244,6 +1198,80 @@ package body iSCSI.Target.Login is
             Append_Key_Value (InitialR2T_Key, Irrelevant_Value);
       end case;
 
+      --  MaxBurstLength, irrelevant when SessionType = Discovery
+
+      case Decoded.MaxBurstLength.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (MaxBurstLength_Key, Reject_Value);
+
+         when Value =>
+            Append_Key_Value (MaxBurstLength_Key, Irrelevant_Value);
+      end case;
+
+      --  DataDigest
+      --
+      --  XXX Doesn't support list of values.
+      --  XXX Accept `None` only.
+      --  XXX Share code with `Discovery` session processing.
+
+      case Decoded.DataDigest.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (DataDigest_Key, Reject_Value);
+
+            --  XXX Should error be reported ???
+
+         when Value =>
+            if Decoded.DataDigest.Value = None_Value then
+               Append_Key_Value (DataDigest_Key, None_Value);
+
+            else
+               Append_Key_Value (DataDigest_Key, Reject_Value);
+            end if;
+      end case;
+
+      --  FirstBurstLength, irrelevant when SessionType = Discovery
+
+      case Decoded.FirstBurstLength.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (FirstBurstLength_Key, Reject_Value);
+
+         when Value =>
+            Append_Key_Value (FirstBurstLength_Key, Irrelevant_Value);
+      end case;
+
+      --  HeaderDigest
+      --
+      --  XXX Doesn't support list of values.
+      --  XXX Accept `None` only.
+      --  XXX Share code with `Normal` session processing.
+
+      case Decoded.HeaderDigest.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (HeaderDigest_Key, Reject_Value);
+
+            --  XXX Should error be reported ???
+
+         when Value =>
+            if Decoded.HeaderDigest.Value = None_Value then
+               Append_Key_Value (HeaderDigest_Key, None_Value);
+
+            else
+               Append_Key_Value (HeaderDigest_Key, Reject_Value);
+            end if;
+      end case;
+
       --  InitiatorAlias, Declarative, optional
 
       case Decoded.InitiatorAlias.Kind is
@@ -1268,19 +1296,6 @@ package body iSCSI.Target.Login is
 
          when Value =>
             InitiatorName := Decoded.InitiatorName.Value;
-      end case;
-
-      --  MaxBurstLength, irrelevant when SessionType = Discovery
-
-      case Decoded.MaxBurstLength.Kind is
-         when None =>
-            null;
-
-         when Error =>
-            Append_Key_Value (MaxBurstLength_Key, Reject_Value);
-
-         when Value =>
-            Append_Key_Value (MaxBurstLength_Key, Irrelevant_Value);
       end case;
 
       --  MaxConnections, irrelevant when SessionType = Discovery
@@ -1380,9 +1395,6 @@ package body iSCSI.Target.Login is
             Set_Error_Initiator_Error;
       end case;
 
-      --  MaxRecvDataSegmentLength : Numerical_Value;
-      --  MaxBurstLength           : Numerical_Value;
-      --  FirstBurstLength         : Numerical_Value;
       --  DefaultTime2Wait         : Numerical_Value;
       --  DefaultTime2Retain       : Numerical_Value;
       --  MaxOutstandingR2T        : Numerical_Value;
@@ -1435,6 +1447,7 @@ package body iSCSI.Target.Login is
    procedure Validate_Normal_Session
      (Decoded : Decoded_Operational_Parameters)
    is
+      use type A0B.Types.Unsigned_24;
       use type iSCSI.Text.Segment;
 
       procedure Append_Key_Value
@@ -1473,6 +1486,7 @@ package body iSCSI.Target.Login is
         with Unreferenced;
       Target_MaxRecvDataSegmentLength    : A0B.Types.Unsigned_24 := 8_192;
       MaxBurstLength                     : A0B.Types.Unsigned_24 := 262_144;
+      FirstBurstLength                   : A0B.Types.Unsigned_24 := 65_536;
 
    begin
       --  iSCSIProtocolLevel
@@ -1492,54 +1506,6 @@ package body iSCSI.Target.Login is
                 (Natural (Decoded.iSCSIProtocolLevel.Value),
                  RFC7144);
             Append_Key_Value (iSCSIProtocolLevel_Key, iSCSIProtocolLevel);
-      end case;
-
-      --  DataDigest
-      --
-      --  XXX Doesn't support list of values.
-      --  XXX Accept `None` only.
-      --  XXX Share code with `Discovery` session processing.
-
-      case Decoded.DataDigest.Kind is
-         when None =>
-            null;
-
-         when Error =>
-            Append_Key_Value (DataDigest_Key, Reject_Value);
-
-            --  XXX Should error be reported ???
-
-         when Value =>
-            if Decoded.DataDigest.Value = None_Value then
-               Append_Key_Value (DataDigest_Key, None_Value);
-
-            else
-               Append_Key_Value (DataDigest_Key, Reject_Value);
-            end if;
-      end case;
-
-      --  HeaderDigest
-      --
-      --  XXX Doesn't support list of values.
-      --  XXX Accept `None` only.
-      --  XXX Share code with `Discovery` session processing.
-
-      case Decoded.HeaderDigest.Kind is
-         when None =>
-            null;
-
-         when Error =>
-            Append_Key_Value (HeaderDigest_Key, Reject_Value);
-
-            --  XXX Should error be reported ???
-
-         when Value =>
-            if Decoded.HeaderDigest.Value = None_Value then
-               Append_Key_Value (HeaderDigest_Key, None_Value);
-
-            else
-               Append_Key_Value (HeaderDigest_Key, Reject_Value);
-            end if;
       end case;
 
       --  ImmediateData
@@ -1572,6 +1538,99 @@ package body iSCSI.Target.Login is
             Append_Key_Value (InitialR2T_Key, InitialR2T);
       end case;
 
+      --  MaxBurstLength
+
+      case Decoded.MaxBurstLength.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (MaxBurstLength_Key, Reject_Value);
+
+         when Value =>
+            MaxBurstLength :=
+              A0B.Types.Unsigned_24'Min
+                (Configured_MaxBurstLength,
+                 A0B.Types.Unsigned_24
+                   (Decoded.MaxBurstLength.Value));
+            Append_Key_Value (MaxBurstLength_Key, MaxBurstLength);
+      end case;
+
+      --  DataDigest
+      --
+      --  XXX Doesn't support list of values.
+      --  XXX Accept `None` only.
+      --  XXX Share code with `Discovery` session processing.
+
+      case Decoded.DataDigest.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (DataDigest_Key, Reject_Value);
+
+            --  XXX Should error be reported ???
+
+         when Value =>
+            if Decoded.DataDigest.Value = None_Value then
+               Append_Key_Value (DataDigest_Key, None_Value);
+
+            else
+               Append_Key_Value (DataDigest_Key, Reject_Value);
+            end if;
+      end case;
+
+      --  FirstBurstLength,
+      --  irrelevant when InitialR2T=Yes and ImmediateData=No
+
+      case Decoded.FirstBurstLength.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (FirstBurstLength_Key, Reject_Value);
+
+         when Value =>
+            if InitialR2T and not ImmediateData then
+               Append_Key_Value (FirstBurstLength_Key, Irrelevant_Value);
+
+            else
+               FirstBurstLength :=
+                 A0B.Types.Unsigned_24'Min
+                   (Configured_FirstBurstLength,
+                    A0B.Types.Unsigned_24 (Decoded.FirstBurstLength.Value));
+               Append_Key_Value (FirstBurstLength_Key, FirstBurstLength);
+
+               if FirstBurstLength > MaxBurstLength then
+                  Set_Error_Initiator_Error;
+               end if;
+            end if;
+      end case;
+
+      --  HeaderDigest
+      --
+      --  XXX Doesn't support list of values.
+      --  XXX Accept `None` only.
+      --  XXX Share code with `Discovery` session processing.
+
+      case Decoded.HeaderDigest.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (HeaderDigest_Key, Reject_Value);
+
+            --  XXX Should error be reported ???
+
+         when Value =>
+            if Decoded.HeaderDigest.Value = None_Value then
+               Append_Key_Value (HeaderDigest_Key, None_Value);
+
+            else
+               Append_Key_Value (HeaderDigest_Key, Reject_Value);
+            end if;
+      end case;
+
       --  InitiatorAlias, Declarative, optional
 
       case Decoded.InitiatorAlias.Kind is
@@ -1596,24 +1655,6 @@ package body iSCSI.Target.Login is
 
          when Value =>
             InitiatorName := Decoded.InitiatorName.Value;
-      end case;
-
-      --  MaxBurstLength
-
-      case Decoded.MaxBurstLength.Kind is
-         when None =>
-            null;
-
-         when Error =>
-            Append_Key_Value (MaxBurstLength_Key, Reject_Value);
-
-         when Value =>
-            MaxBurstLength :=
-              A0B.Types.Unsigned_24'Min
-                (Configured_MaxBurstLength,
-                 A0B.Types.Unsigned_24
-                   (Decoded.MaxBurstLength.Value));
-            Append_Key_Value (MaxBurstLength_Key, MaxBurstLength);
       end case;
 
       --  MaxConnections
@@ -1718,7 +1759,6 @@ package body iSCSI.Target.Login is
             Set_Error_Initiator_Error;
       end case;
 
-      --  FirstBurstLength         : Numerical_Value;
       --  DefaultTime2Wait         : Numerical_Value;
       --  DefaultTime2Retain       : Numerical_Value;
       --  MaxOutstandingR2T        : Numerical_Value;
