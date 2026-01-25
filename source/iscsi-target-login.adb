@@ -1134,7 +1134,8 @@ package body iSCSI.Target.Login is
          Ada.Text_IO.New_Line;
       end Append_Key_Value;
 
-      --  iSCSIProtocolLevel : Natural := 1;
+      --  iSCSIProtocolLevel : Natural  := 1;
+      --  MaxConnections     : Positive := 1;
 
    begin
       --  iSCSIProtocolLevel, irrelevant when SessionType = Discovery
@@ -1198,7 +1199,19 @@ package body iSCSI.Target.Login is
             end if;
       end case;
 
-      --  MaxConnections           : Numerical_Value;
+      --  MaxConnections, irrelevant when SessionType = Discovery
+
+      case Decoded.MaxConnections.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (MaxConnections_Key, Reject_Value);
+
+         when Value =>
+            Append_Key_Value (MaxConnections_Key, Irrelevant_Value);
+      end case;
+
       --  SendTargets              : Name_Value;
       --  TargetName               : Name_Value;
       --  InitiatorName            : Name_Value;
@@ -1305,7 +1318,10 @@ package body iSCSI.Target.Login is
       RFC7143 : constant := 1;
       RFC7144 : constant := 2;
 
-      iSCSIProtocolLevel : Natural := RFC7143;
+      Maximum_Connections : constant := 1;
+
+      iSCSIProtocolLevel : Natural  := RFC7143;
+      MaxConnections     : Positive := 1;
 
    begin
       --  iSCSIProtocolLevel
@@ -1375,7 +1391,23 @@ package body iSCSI.Target.Login is
             end if;
       end case;
 
-      --  MaxConnections           : Numerical_Value;
+      --  MaxConnections
+
+      case Decoded.MaxConnections.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (MaxConnections_Key, Reject_Value);
+
+         when Value =>
+            MaxConnections :=
+              Positive'Min
+                (Positive (Decoded.MaxConnections.Value),
+                 Maximum_Connections);
+            Append_Key_Value (MaxConnections_Key, MaxConnections);
+      end case;
+
       --  SendTargets              : Name_Value;
       --  TargetName               : Name_Value;
       --  InitiatorName            : Name_Value;
