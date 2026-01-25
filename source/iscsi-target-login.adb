@@ -1257,6 +1257,20 @@ package body iSCSI.Target.Login is
             Append_Key_Value (SendTargets_Key, Irrelevant_Value);
       end case;
 
+      --  TargetAddress, Declarative, never send by initiator, send by target
+      --  for redirection and on `SendTarget`
+
+      case Decoded.TargetAddress.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (TargetAddress_Key, Reject_Value);
+
+         when Value =>
+            Append_Key_Value (TargetAddress_Key, Reject_Value);
+      end case;
+
       --  TargetAlias, never send by initiator
 
       case Decoded.TargetAlias.Kind is
@@ -1283,7 +1297,6 @@ package body iSCSI.Target.Login is
             TargetName := Decoded.TargetName.Value;
       end case;
 
-      --  TargetAddress            : TargetAddress_Value;
       --  TargetPortalGroupTag     : Binary_Value_16;
       --  InitialR2T               : Boolean_Value;
       --  ImmediateData            : Boolean_Value;
@@ -1521,6 +1534,20 @@ package body iSCSI.Target.Login is
             Append_Key_Value (SendTargets_Key, Irrelevant_Value);
       end case;
 
+      --  TargetAddress, Declarative, never send by initiator, send by target
+      --  for redirection and on `SendTarget`
+
+      case Decoded.TargetAddress.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (TargetAddress_Key, Reject_Value);
+
+         when Value =>
+            Append_Key_Value (TargetAddress_Key, Reject_Value);
+      end case;
+
       --  TargetAlias, never send by initiator, should be communicated to
       --  the initiator if configured.
 
@@ -1549,7 +1576,6 @@ package body iSCSI.Target.Login is
             TargetName := Decoded.TargetName.Value;
       end case;
 
-      --  TargetAddress            : TargetAddress_Value;
       --  TargetPortalGroupTag     : Binary_Value_16;
       --  InitialR2T               : Boolean_Value;
       --  ImmediateData            : Boolean_Value;
