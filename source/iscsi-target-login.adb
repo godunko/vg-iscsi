@@ -268,6 +268,27 @@ package body iSCSI.Target.Login is
       Decoded : out SendTargets_Value);
    --  Decode `SendTargets`
 
+   procedure Append_Key_Value
+     (Key   : iSCSI.Text.UTF8_String;
+      Value : iSCSI.Text.UTF8_String);
+
+   procedure Append_Key_Value
+     (Key   : iSCSI.Text.UTF8_String;
+      Value : Natural);
+
+   procedure Set_Error_Initiator_Error is null;
+   --  XXX Set error code to 2000 "Initiator error"
+
+   procedure Set_Error_Unsupported_Version is null;
+   --  XXX Set error code to 0205 "The requested iSCSI version range is not
+   --  supported by the target."
+
+   procedure Set_Error_Missing_Parameter is null;
+   --  XXX Set error code to 0207 "Missing parameters"
+
+   procedure Set_Error_Session_Type_Not_Supported is null;
+   --  XXX Set 0209 "Session type not supported" code !!!
+
    procedure Validate (Decoded : Decoded_Operational_Parameters);
 
    procedure Validate_Discovery_Session
@@ -275,6 +296,38 @@ package body iSCSI.Target.Login is
 
    procedure Validate_Normal_Session
      (Decoded : Decoded_Operational_Parameters);
+
+   ----------------------
+   -- Append_Key_Value --
+   ----------------------
+
+   procedure Append_Key_Value
+     (Key   : iSCSI.Text.UTF8_String;
+      Value : iSCSI.Text.UTF8_String) is
+   begin
+      Ada.Text_IO.Put ('`');
+      Ada.Text_IO.Put (To_String (Key));
+      Ada.Text_IO.Put ("` => `");
+      Ada.Text_IO.Put (To_String (Value));
+      Ada.Text_IO.Put ('`');
+      Ada.Text_IO.New_Line;
+   end Append_Key_Value;
+
+   ----------------------
+   -- Append_Key_Value --
+   ----------------------
+
+   procedure Append_Key_Value
+     (Key   : iSCSI.Text.UTF8_String;
+      Value : Natural)
+   is
+      Image_String : constant String := Natural'Image (Value);
+      Image        : constant iSCSI.Text.UTF8_String (Image_String'Range)
+        with Import, Address => Image_String'Address;
+
+   begin
+      Append_Key_Value (Key, Image (Image'First + 1 .. Image'Last));
+   end Append_Key_Value;
 
    ----------------------------------
    -- Decode_Binary_Value_16_Value --
@@ -679,10 +732,6 @@ package body iSCSI.Target.Login is
 
       procedure Append_Key_Value
         (Key   : iSCSI.Text.UTF8_String;
-         Value : iSCSI.Text.UTF8_String);
-
-      procedure Append_Key_Value
-        (Key   : iSCSI.Text.UTF8_String;
          Value : A0B.Types.Unsigned_64);
 
       procedure Append_Key_Value
@@ -702,22 +751,6 @@ package body iSCSI.Target.Login is
 
       begin
          Append_Key_Value (Key, V);
-      end Append_Key_Value;
-
-      ----------------------
-      -- Append_Key_Value --
-      ----------------------
-
-      procedure Append_Key_Value
-        (Key   : iSCSI.Text.UTF8_String;
-         Value : iSCSI.Text.UTF8_String) is
-      begin
-         Ada.Text_IO.Put ('`');
-         Ada.Text_IO.Put (To_String (Key));
-         Ada.Text_IO.Put ("` => `");
-         Ada.Text_IO.Put (To_String (Value));
-         Ada.Text_IO.Put ('`');
-         Ada.Text_IO.New_Line;
       end Append_Key_Value;
 
       ----------------------
@@ -1026,30 +1059,6 @@ package body iSCSI.Target.Login is
    --------------
 
    procedure Validate (Decoded : Decoded_Operational_Parameters) is
-
-      procedure Set_Error_Session_Type_Not_Supported is null;
-      --  XXX Set 0209 "Session type not supported" code !!!
-
-      procedure Append_Key_Value
-        (Key   : iSCSI.Text.UTF8_String;
-         Value : iSCSI.Text.UTF8_String);
-
-      ----------------------
-      -- Append_Key_Value --
-      ----------------------
-
-      procedure Append_Key_Value
-        (Key   : iSCSI.Text.UTF8_String;
-         Value : iSCSI.Text.UTF8_String) is
-      begin
-         Ada.Text_IO.Put ('`');
-         Ada.Text_IO.Put (To_String (Key));
-         Ada.Text_IO.Put ("` => `");
-         Ada.Text_IO.Put (To_String (Value));
-         Ada.Text_IO.Put ('`');
-         Ada.Text_IO.New_Line;
-      end Append_Key_Value;
-
       SessionType : iSCSI.Target.Login.SessionType := Normal;
 
    begin
@@ -1089,29 +1098,6 @@ package body iSCSI.Target.Login is
      (Decoded : Decoded_Operational_Parameters)
    is
       use type iSCSI.Text.Segment;
-
-      procedure Append_Key_Value
-        (Key   : iSCSI.Text.UTF8_String;
-         Value : iSCSI.Text.UTF8_String);
-
-      procedure Set_Error_Missing_Parameter is null;
-      --  XXX Set error code to 0207 "Missing parameters"
-
-      ----------------------
-      -- Append_Key_Value --
-      ----------------------
-
-      procedure Append_Key_Value
-        (Key   : iSCSI.Text.UTF8_String;
-         Value : iSCSI.Text.UTF8_String) is
-      begin
-         Ada.Text_IO.Put ('`');
-         Ada.Text_IO.Put (To_String (Key));
-         Ada.Text_IO.Put ("` => `");
-         Ada.Text_IO.Put (To_String (Value));
-         Ada.Text_IO.Put ('`');
-         Ada.Text_IO.New_Line;
-      end Append_Key_Value;
 
       --  iSCSIProtocolLevel : Natural  := 1;
       --  MaxConnections     : Positive := 1;
@@ -1272,7 +1258,24 @@ package body iSCSI.Target.Login is
             TargetName := Decoded.TargetName.Value;
       end case;
 
-      --  TargetPortalGroupTag     : Binary_Value_16;
+      --  TargetPortalGroupTag, never send by the initiator, target must
+      --  provide it on Login.
+
+      case Decoded.TargetPortalGroupTag.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (TargetPortalGroupTag_Key, Reject_Value);
+
+            Set_Error_Initiator_Error;
+
+         when Value =>
+            Append_Key_Value (TargetPortalGroupTag_Key, Reject_Value);
+
+            Set_Error_Initiator_Error;
+      end case;
+
       --  InitialR2T               : Boolean_Value;
       --  ImmediateData            : Boolean_Value;
       --  MaxRecvDataSegmentLength : Numerical_Value;
@@ -1298,6 +1301,21 @@ package body iSCSI.Target.Login is
       --  X_NodeArchitecture       : List_Of_Values;
       --
       --  NotUnderstood            : Segment_Array (1 .. 8);
+
+      --  Send some parameters
+
+      --  if Decoded.TargetAlias.Kind = None then
+      --     Append_Key_Value (TargetAlias_Key, "VG iSCSI target");
+      --     --  XXX Send it only when configured !!!
+      --  end if;
+
+      --  Append_Key_Value (TargetAddress_Key, "127.0.0.1");
+      --  XXX Send on redirect and on `SendTargets` only
+
+      if Decoded.TargetPortalGroupTag.Kind = None then
+         Append_Key_Value (TargetPortalGroupTag_Key, 1);
+      end if;
+
       raise Program_Error;
    end Validate_Discovery_Session;
 
@@ -1312,38 +1330,7 @@ package body iSCSI.Target.Login is
 
       procedure Append_Key_Value
         (Key   : iSCSI.Text.UTF8_String;
-         Value : iSCSI.Text.UTF8_String);
-
-      procedure Append_Key_Value
-        (Key   : iSCSI.Text.UTF8_String;
-         Value : Natural);
-
-      procedure Append_Key_Value
-        (Key   : iSCSI.Text.UTF8_String;
          Value : String);
-
-      procedure Set_Error_Missing_Parameter is null;
-      --  XXX Set error code to 0207 "Missing parameters"
-
-      procedure Set_Error_Unsupported_Version is null;
-      --  XXX Set error code to 0205 "The requested iSCSI version range is not
-      --  supported by the target."
-
-      ----------------------
-      -- Append_Key_Value --
-      ----------------------
-
-      procedure Append_Key_Value
-        (Key   : iSCSI.Text.UTF8_String;
-         Value : iSCSI.Text.UTF8_String) is
-      begin
-         Ada.Text_IO.Put ('`');
-         Ada.Text_IO.Put (To_String (Key));
-         Ada.Text_IO.Put ("` => `");
-         Ada.Text_IO.Put (To_String (Value));
-         Ada.Text_IO.Put ('`');
-         Ada.Text_IO.New_Line;
-      end Append_Key_Value;
 
       ----------------------
       -- Append_Key_Value --
@@ -1358,20 +1345,6 @@ package body iSCSI.Target.Login is
 
       begin
          Append_Key_Value (Key, V);
-      end Append_Key_Value;
-
-      ----------------------
-      -- Append_Key_Value --
-      ----------------------
-
-      procedure Append_Key_Value
-        (Key   : iSCSI.Text.UTF8_String;
-         Value : Natural)
-      is
-         Image : constant String := Natural'Image (Value);
-
-      begin
-         Append_Key_Value (Key, Image (Image'First + 1 .. Image'Last));
       end Append_Key_Value;
 
       RFC7143 : constant := 1;
@@ -1533,6 +1506,7 @@ package body iSCSI.Target.Login is
 
          when Value =>
             Append_Key_Value (TargetAlias_Key, Reject_Value);
+            --  XXX Is it correct when TargetAlias is configured ???
       end case;
 
       --  TargetName, Declarative, required when SessionType = Normal
@@ -1548,7 +1522,24 @@ package body iSCSI.Target.Login is
             TargetName := Decoded.TargetName.Value;
       end case;
 
-      --  TargetPortalGroupTag     : Binary_Value_16;
+      --  TargetPortalGroupTag, never send by the initiator, target must
+      --  provide it on Login.
+
+      case Decoded.TargetPortalGroupTag.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (TargetPortalGroupTag_Key, Reject_Value);
+
+            Set_Error_Initiator_Error;
+
+         when Value =>
+            Append_Key_Value (TargetPortalGroupTag_Key, Reject_Value);
+
+            Set_Error_Initiator_Error;
+      end case;
+
       --  InitialR2T               : Boolean_Value;
       --  ImmediateData            : Boolean_Value;
       --  MaxRecvDataSegmentLength : Numerical_Value;
@@ -1577,11 +1568,17 @@ package body iSCSI.Target.Login is
 
       --  Send some parameters
 
-      Append_Key_Value (TargetAlias_Key, "VG iSCSI target");
-      --  XXX Send it only when configured !!!
+      if Decoded.TargetAlias.Kind = None then
+         Append_Key_Value (TargetAlias_Key, "VG iSCSI target");
+         --  XXX Send it only when configured !!!
+      end if;
 
       --  Append_Key_Value (TargetAddress_Key, "127.0.0.1");
       --  XXX Send on redirect and on `SendTargets` only
+
+      if Decoded.TargetPortalGroupTag.Kind = None then
+         Append_Key_Value (TargetPortalGroupTag_Key, 1);
+      end if;
 
       raise Program_Error;
    end Validate_Normal_Session;
