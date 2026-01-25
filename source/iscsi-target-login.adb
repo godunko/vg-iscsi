@@ -205,16 +205,6 @@ package body iSCSI.Target.Login is
      iSCSI.Text.UTF8_String (1 .. Yes_String'Length)
        with Import, Address => Yes_String'Address;
 
-   type Optional_Slice (Is_Specified : Boolean := False) is record
-      case Is_Specified is
-         when False =>
-            null;
-
-         when True =>
-            Value : iSCSI.Text.Segment;
-      end case;
-   end record;
-
    function To_String (Item : iSCSI.Text.UTF8_String) return String;
 
    procedure Decode_Boolean_Value
@@ -745,8 +735,6 @@ package body iSCSI.Target.Login is
         with Import, Address => Header_Address;
       Parser : iSCSI.Text.Parser;
 
-      InitiatorName_Value  : Optional_Slice;
-
       DefaultTime2Retain       : Numerical_Value;
       DefaultTime2Wait         : Numerical_Value;
       IFMarker                 : Boolean_Value;
@@ -769,8 +757,6 @@ package body iSCSI.Target.Login is
             Segment : constant iSCSI.Text.Segment := iSCSI.Text.Value (Parser);
             Text    : constant iSCSI.Text.UTF8_String :=
               iSCSI.Text.Value (Parser);
-            Value   : constant Optional_Slice :=
-              (True, iSCSI.Text.Value (Parser));
 
          begin
             if Key = DataDigest_Key then
@@ -837,7 +823,6 @@ package body iSCSI.Target.Login is
                  (Segment, Decoded.InitiatorAlias);
 
             elsif Key = InitiatorName_Key then
-               InitiatorName_Value := Value;
                Decode_iSCSI_Name_Value (Segment, Decoded.InitiatorName);
 
             elsif Key = iSCSIProtocolLevel_Key then
@@ -958,15 +943,6 @@ package body iSCSI.Target.Login is
       --
       --  Validation
       --
-
-      --  InitiatorName
-
-      if not InitiatorName_Value.Is_Specified then
-         --  `InitiatorName` must be present always.
-
-         raise Program_Error;
-         --  XXX 0207 Missing parameter !!!
-      end if;
 
       --  DefaultTime2Retain
 
