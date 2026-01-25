@@ -816,7 +816,6 @@ package body iSCSI.Target.Login is
       IFMarker                 : Boolean_Value;
       OFMarker                 : Boolean_Value;
       ErrorRecoveryLevel       : Numerical_Value;
-      MaxRecvDataSegmentLength : Numerical_Value;
 
       Decoded : Decoded_Operational_Parameters;
 
@@ -925,8 +924,6 @@ package body iSCSI.Target.Login is
                   Decoded.MaxOutstandingR2T);
 
             elsif Key = MaxRecvDataSegmentLength_Key then
-               Decode_Numerical_Value
-                 (iSCSI.Text.Value (Parser), MaxRecvDataSegmentLength);
                Decode_Numerical_Value
                  (Segment,
                   512,
