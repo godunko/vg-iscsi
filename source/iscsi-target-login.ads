@@ -109,6 +109,8 @@ package iSCSI.Target.Login is
    end record;
 
    type Decoded_Operational_Parameters is record
+      --  [RFC3720]
+
       HeaderDigest             : List_Of_Values;
       DataDigest               : List_Of_Values;
       MaxConnections           : Numerical_Value;
@@ -132,10 +134,18 @@ package iSCSI.Target.Login is
       ErrorRecoveryLevel       : Numerical_Value;
       SessionType              : SessionType_Value;
 
+      --  [RFC3720], obsolete in [RFC7143]
+
       OFMarker                 : Boolean_Value;
       IFMarker                 : Boolean_Value;
       OFMarkInt                : Numerical_Value;
       IFMarkInt                : Numerical_Value;
+
+      --  [RFC7143]
+
+      TaskReporting            : List_Of_Values;
+      iSCSIProtocolLevel       : Numerical_Value;
+      X_NodeArchitecture       : List_Of_Values;
    end record;
 
    type Login_Handler is private;

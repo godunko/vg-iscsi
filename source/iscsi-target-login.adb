@@ -845,6 +845,8 @@ package body iSCSI.Target.Login is
             elsif Key = iSCSIProtocolLevel_Key then
                Decode_Numerical_Value
                  (iSCSI.Text.Value (Parser), iSCSIProtocolLevel);
+               Decode_Numerical_Value
+                 (Segment, 0, 2, Decoded.iSCSIProtocolLevel);
 
             elsif Key = MaxBurstLength_Key then
                Decode_Numerical_Value
@@ -901,10 +903,10 @@ package body iSCSI.Target.Login is
                  (Segment, Decoded.TargetPortalGroupTag);
 
             elsif Key = TaskReporting_Key then
-               raise Program_Error;
+               Decode_List_Of_Values (Segment, Decoded.TaskReporting);
 
             elsif Key = X_NodeArchitecture_Key then
-               raise Program_Error;
+               Decode_List_Of_Values (Segment, Decoded.X_NodeArchitecture);
 
             elsif Key'Length >= X_Minus_Prefix_Key'Length
               and then Key (Key'First
