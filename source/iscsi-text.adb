@@ -73,6 +73,17 @@ package body iSCSI.Text with Pure is
       Self.Current := 0;
    end Initialize;
 
+   -------------
+   -- Is_Null --
+   -------------
+
+   function Is_Null (Self : Segment) return Boolean is
+      use type System.Address;
+
+   begin
+      return Self.Address = System.Null_Address;
+   end Is_Null;
+
    ---------
    -- Key --
    ---------

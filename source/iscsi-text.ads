@@ -18,6 +18,8 @@ package iSCSI.Text with Pure is
 
    function Text (Self : Segment) return UTF8_String;
 
+   function Is_Null (Self : Segment) return Boolean;
+
    type Parser is limited private;
 
    procedure Initialize
@@ -38,13 +40,13 @@ package iSCSI.Text with Pure is
 private
 
    type Segment is record
-      Address  : System.Address;
+      Address  : System.Address := System.Null_Address;
       Offset   : System.Storage_Elements.Storage_Count;
       Length   : System.Storage_Elements.Storage_Count;
    end record;
 
    type Parser is limited record
-      Address   : System.Address;
+      Address   : System.Address := System.Null_Address;
       Length    : System.Storage_Elements.Storage_Count;
       Current   : System.Storage_Elements.Storage_Count;
       Key_First : System.Storage_Elements.Storage_Count;
