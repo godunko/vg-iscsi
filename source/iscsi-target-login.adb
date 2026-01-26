@@ -22,6 +22,8 @@ package body iSCSI.Target.Login is
    Configured_DefaultTime2Wait         : constant := 2;
    Configured_DefaultTime2Retain       : constant := 20;
    Configured_MaxOutstandingR2T        : constant := 1;
+   Configured_DataPDUInOrder           : constant Boolean := True;
+   Configured_DataSequenceInOrder      : constant Boolean := True;
 
    PLUS_SIGN              : constant := 16#2B#;
    SOLIDUS                : constant := 16#2F#;
@@ -1056,6 +1058,8 @@ package body iSCSI.Target.Login is
       DefaultTime2Wait                   : Natural               := 2;
       DefaultTime2Retain                 : Natural               := 20;
       --  MaxOutstandingR2T                  : Natural               := 1;
+      --  DataPDUInOrder                     : Boolean := True;
+      --  DataSequenceInOrder                : Boolean := True;
 
    begin
       --  iSCSIProtocolLevel, irrelevant when SessionType = Discovery
@@ -1132,6 +1136,32 @@ package body iSCSI.Target.Login is
             else
                Append_Key_Value (DataDigest_Key, Reject_Value);
             end if;
+      end case;
+
+      --  DataPDUInOrder, irrelevant when SessionType = Discovery
+
+      case Decoded.DataPDUInOrder.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (DataPDUInOrder_Key, Reject_Value);
+
+         when Value =>
+            Append_Key_Value (DataPDUInOrder_Key, Irrelevant_Value);
+      end case;
+
+      --  DataSequenceInOrder, irrelevant when SessionType = Discovery
+
+      case Decoded.DataSequenceInOrder.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (DataSequenceInOrder_Key, Reject_Value);
+
+         when Value =>
+            Append_Key_Value (DataSequenceInOrder_Key, Irrelevant_Value);
       end case;
 
       --  DefaultTime2Retain
@@ -1345,8 +1375,6 @@ package body iSCSI.Target.Login is
             Set_Error_Initiator_Error;
       end case;
 
-      --  DataPDUInOrder           : Boolean_Value;
-      --  DataSequenceInOrder      : Boolean_Value;
       --  ErrorRecoveryLevel       : Numerical_Value;
       --
       --  --  [RFC3720], obsolete in [RFC7143]
@@ -1419,16 +1447,16 @@ package body iSCSI.Target.Login is
       RFC7143 : constant := 1;
       RFC7144 : constant := 2;
 
-      iSCSIProtocolLevel                 : Natural  := RFC7143;
-      MaxConnections                     : Positive := 1;
+      iSCSIProtocolLevel                 : Natural               := RFC7143;
+      MaxConnections                     : Positive              := 1;
       TargetName                         : iSCSI.Text.Segment
         with Unreferenced;
       InitiatorName                      : iSCSI.Text.Segment
         with Unreferenced;
       InitiatorAlias                     : iSCSI.Text.Segment
         with Unreferenced;
-      InitialR2T                         : Boolean  := True;
-      ImmediateData                      : Boolean := True;
+      InitialR2T                         : Boolean               := True;
+      ImmediateData                      : Boolean               := True;
       Initiator_MaxRecvDataSegmentLength : A0B.Types.Unsigned_24 := 8_192
         with Unreferenced;
       Target_MaxRecvDataSegmentLength    : A0B.Types.Unsigned_24 := 8_192;
@@ -1437,6 +1465,8 @@ package body iSCSI.Target.Login is
       DefaultTime2Wait                   : Natural               := 2;
       DefaultTime2Retain                 : Natural               := 20;
       MaxOutstandingR2T                  : Natural               := 1;
+      DataPDUInOrder                     : Boolean               := True;
+      DataSequenceInOrder                : Boolean               := True;
 
    begin
       --  iSCSIProtocolLevel
@@ -1528,6 +1558,37 @@ package body iSCSI.Target.Login is
             else
                Append_Key_Value (DataDigest_Key, Reject_Value);
             end if;
+      end case;
+
+      --  DataPDUInOrder
+
+      case Decoded.DataPDUInOrder.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (DataPDUInOrder_Key, Reject_Value);
+
+         when Value =>
+            DataPDUInOrder :=
+              Configured_DataPDUInOrder or Decoded.DataPDUInOrder.Value;
+            Append_Key_Value (DataPDUInOrder_Key, DataPDUInOrder);
+      end case;
+
+      --  DataSequenceInOrder
+
+      case Decoded.DataSequenceInOrder.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (DataSequenceInOrder_Key, Reject_Value);
+
+         when Value =>
+            DataSequenceInOrder :=
+              Configured_DataSequenceInOrder
+                or Decoded.DataSequenceInOrder.Value;
+            Append_Key_Value (DataSequenceInOrder_Key, DataSequenceInOrder);
       end case;
 
       --  DefaultTime2Retain
@@ -1764,8 +1825,6 @@ package body iSCSI.Target.Login is
             Set_Error_Initiator_Error;
       end case;
 
-      --  DataPDUInOrder           : Boolean_Value;
-      --  DataSequenceInOrder      : Boolean_Value;
       --  ErrorRecoveryLevel       : Numerical_Value;
       --
       --  --  [RFC3720], obsolete in [RFC7143]
