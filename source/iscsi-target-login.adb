@@ -21,6 +21,7 @@ package body iSCSI.Target.Login is
    Configured_FirstBurstLength         : constant := 65_536;
    Configured_DefaultTime2Wait         : constant := 2;
    Configured_DefaultTime2Retain       : constant := 20;
+   Configured_MaxOutstandingR2T        : constant := 1;
 
    PLUS_SIGN              : constant := 16#2B#;
    SOLIDUS                : constant := 16#2F#;
@@ -1054,6 +1055,7 @@ package body iSCSI.Target.Login is
       --  FirstBurstLength                   : A0B.Types.Unsigned_24 := 65_536;
       DefaultTime2Wait                   : Natural               := 2;
       DefaultTime2Retain                 : Natural               := 20;
+      --  MaxOutstandingR2T                  : Natural               := 1;
 
    begin
       --  iSCSIProtocolLevel, irrelevant when SessionType = Discovery
@@ -1246,6 +1248,19 @@ package body iSCSI.Target.Login is
             Append_Key_Value (MaxConnections_Key, Irrelevant_Value);
       end case;
 
+      --  MaxOutstandingR2T, irrelevant when SessionType = Discovery
+
+      case Decoded.MaxOutstandingR2T.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (MaxOutstandingR2T_Key, Reject_Value);
+
+         when Value =>
+            Append_Key_Value (MaxOutstandingR2T_Key, Irrelevant_Value);
+      end case;
+
       --  MaxRecvDataSegmentLength, Declarative
 
       case Decoded.MaxRecvDataSegmentLength.Kind is
@@ -1330,7 +1345,6 @@ package body iSCSI.Target.Login is
             Set_Error_Initiator_Error;
       end case;
 
-      --  MaxOutstandingR2T        : Numerical_Value;
       --  DataPDUInOrder           : Boolean_Value;
       --  DataSequenceInOrder      : Boolean_Value;
       --  ErrorRecoveryLevel       : Numerical_Value;
@@ -1422,6 +1436,7 @@ package body iSCSI.Target.Login is
       FirstBurstLength                   : A0B.Types.Unsigned_24 := 65_536;
       DefaultTime2Wait                   : Natural               := 2;
       DefaultTime2Retain                 : Natural               := 20;
+      MaxOutstandingR2T                  : Natural               := 1;
 
    begin
       --  iSCSIProtocolLevel
@@ -1647,6 +1662,23 @@ package body iSCSI.Target.Login is
             Append_Key_Value (MaxConnections_Key, MaxConnections);
       end case;
 
+      --  MaxOutstandingR2T
+
+      case Decoded.MaxOutstandingR2T.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (MaxOutstandingR2T_Key, Reject_Value);
+
+         when Value =>
+            MaxOutstandingR2T :=
+              Natural'Min
+                (Configured_MaxOutstandingR2T,
+                 Natural (Decoded.MaxOutstandingR2T.Value));
+            Append_Key_Value (MaxOutstandingR2T_Key, MaxOutstandingR2T);
+      end case;
+
       --  MaxRecvDataSegmentLength, Declarative
 
       case Decoded.MaxRecvDataSegmentLength.Kind is
@@ -1732,9 +1764,6 @@ package body iSCSI.Target.Login is
             Set_Error_Initiator_Error;
       end case;
 
-      --  DefaultTime2Wait         : Numerical_Value;
-      --  DefaultTime2Retain       : Numerical_Value;
-      --  MaxOutstandingR2T        : Numerical_Value;
       --  DataPDUInOrder           : Boolean_Value;
       --  DataSequenceInOrder      : Boolean_Value;
       --  ErrorRecoveryLevel       : Numerical_Value;
