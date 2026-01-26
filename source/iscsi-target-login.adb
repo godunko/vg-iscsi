@@ -13,6 +13,8 @@ with iSCSI.PDUs;
 
 package body iSCSI.Target.Login is
 
+   type TaskReporting_Type is (RFC3720, ResponseFence, FastAbort);
+
    Configured_MaxConnections           : constant := 1;
    Configured_InitialR2T               : constant Boolean := True;
    Configured_ImmediateData            : constant Boolean := False;
@@ -49,6 +51,7 @@ package body iSCSI.Target.Login is
    DefaultTime2Wait_String     : constant String := "DefaultTime2Wait";
    Discovery_String            : constant String := "Discovery";
    ErrorRecoveryLevel_String   : constant String := "ErrorRecoveryLevel";
+   FastAbort_String            : constant String := "FastAbort";
    FirstBurstLength_String     : constant String := "FirstBurstLength";
    HeaderDigest_String         : constant String := "HeaderDigest";
    IFMarker_String             : constant String := "IFMarker";
@@ -71,6 +74,8 @@ package body iSCSI.Target.Login is
    OFMarker_String             : constant String := "OFMarker";
    OFMarkInt_String            : constant String := "OFMarkInt";
    Reject_String               : constant String := "Reject";
+   ResponseFence_String        : constant String := "ResponseFence";
+   RFC3720_String              : constant String := "RFC3720";
    SendTargets_String          : constant String := "SendTargets";
    SessionType_String          : constant String := "SessionType";
    TargetAddress_String        : constant String := "TargetAddress";
@@ -196,6 +201,9 @@ package body iSCSI.Target.Login is
    Discovery_Value     : constant
      iSCSI.Text.UTF8_String (1 .. Discovery_String'Length)
        with Import, Address => Discovery_String'Address;
+   FastAbort_Value     : constant
+     iSCSI.Text.UTF8_String (1 .. FastAbort_String'Length)
+       with Import, Address => FastAbort_String'Address;
    Irrelevant_Value    : constant
      iSCSI.Text.UTF8_String (1 .. Irrelevant_String'Length)
        with Import, Address => Irrelevant_String'Address;
@@ -214,6 +222,12 @@ package body iSCSI.Target.Login is
    Reject_Value        : constant
      iSCSI.Text.UTF8_String (1 .. Reject_String'Length)
        with Import, Address => Reject_String'Address;
+   ResponseFence_Value : constant
+     iSCSI.Text.UTF8_String (1 .. ResponseFence_String'Length)
+       with Import, Address => ResponseFence_String'Address;
+   RFC3720_Value       : constant
+     iSCSI.Text.UTF8_String (1 .. RFC3720_String'Length)
+       with Import, Address => RFC3720_String'Address;
    Yes_Value           : constant
      iSCSI.Text.UTF8_String (1 .. Yes_String'Length)
        with Import, Address => Yes_String'Address;
@@ -297,6 +311,10 @@ package body iSCSI.Target.Login is
      (Key   : iSCSI.Text.UTF8_String;
       Value : A0B.Types.Unsigned_24);
 
+   procedure Append_Key_Value
+     (Key   : iSCSI.Text.UTF8_String;
+      Value : TaskReporting_Type);
+
    procedure Set_Error_Initiator_Error is null;
    --  XXX Set error code to 2000 "Initiator error"
 
@@ -376,6 +394,22 @@ package body iSCSI.Target.Login is
 
    begin
       Append_Key_Value (Key, Image (Image'First + 1 .. Image'Last));
+   end Append_Key_Value;
+
+   ----------------------
+   -- Append_Key_Value --
+   ----------------------
+
+   procedure Append_Key_Value
+     (Key   : iSCSI.Text.UTF8_String;
+      Value : TaskReporting_Type) is
+   begin
+      Append_Key_Value
+        (Key,
+         (case Value is
+             when RFC3720       => RFC3720_Value,
+             when ResponseFence => ResponseFence_Value,
+             when FastAbort     => FastAbort_Value));
    end Append_Key_Value;
 
    ----------------------------------
@@ -1062,6 +1096,7 @@ package body iSCSI.Target.Login is
       --  DataPDUInOrder                     : Boolean := True;
       --  DataSequenceInOrder                : Boolean := True;
       ErrorRecoveryLevel                 : Natural               := 0;
+      --  TaskReporting                      : TaskReporting_Type    := RFC3720;
 
    begin
       --  iSCSIProtocolLevel, irrelevant when SessionType = Discovery
@@ -1393,6 +1428,19 @@ package body iSCSI.Target.Login is
             Set_Error_Initiator_Error;
       end case;
 
+      --  TaskReporting, irrelevant when SessionType = Discovery
+
+      case Decoded.TaskReporting.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (TaskReporting_Key, Reject_Value);
+
+         when Value =>
+            Append_Key_Value (TaskReporting_Key, Irrelevant_Value);
+      end case;
+
       --  --  [RFC3720], obsolete in [RFC7143]
       --
       --  OFMarker                 : Boolean_Value;
@@ -1402,7 +1450,6 @@ package body iSCSI.Target.Login is
       --
       --  --  [RFC7143]
       --
-      --  TaskReporting            : List_Of_Values;
       --  X_NodeArchitecture       : List_Of_Values;
 
       --  NotUnderstood keys
@@ -1490,6 +1537,7 @@ package body iSCSI.Target.Login is
       DataPDUInOrder                     : Boolean               := True;
       DataSequenceInOrder                : Boolean               := True;
       ErrorRecoveryLevel                 : Natural               := 0;
+      TaskReporting                      : TaskReporting_Type    := RFC3720;
 
    begin
       --  iSCSIProtocolLevel
@@ -1865,6 +1913,27 @@ package body iSCSI.Target.Login is
             Set_Error_Initiator_Error;
       end case;
 
+      --  TaskReporting
+      --
+      --  XXX List of values is not supported !!!
+
+      case Decoded.TaskReporting.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (TaskReporting_Key, Reject_Value);
+
+         when Value =>
+            if Decoded.TaskReporting.Value = RFC3720_Value then
+               TaskReporting := RFC3720;
+               Append_Key_Value (TaskReporting_Key, TaskReporting);
+
+            else
+               Append_Key_Value (TaskReporting_Key, Reject_Value);
+            end if;
+      end case;
+
       --  --  [RFC3720], obsolete in [RFC7143]
       --
       --  OFMarker                 : Boolean_Value;
@@ -1874,7 +1943,6 @@ package body iSCSI.Target.Login is
       --
       --  --  [RFC7143]
       --
-      --  TaskReporting            : List_Of_Values;
       --  X_NodeArchitecture       : List_Of_Values;
 
       --  NotUnderstood keys
