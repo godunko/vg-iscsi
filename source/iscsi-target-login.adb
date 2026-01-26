@@ -1404,8 +1404,14 @@ package body iSCSI.Target.Login is
       --
       --  TaskReporting            : List_Of_Values;
       --  X_NodeArchitecture       : List_Of_Values;
-      --
-      --  NotUnderstood            : Segment_Array (1 .. 8);
+
+      --  NotUnderstood keys
+
+      for Key of Decoded.NotUnderstood loop
+         exit when iSCSI.Text.Is_Null (Key);
+
+         Append_Key_Value (iSCSI.Text.Text (Key), NotUnderstood_Value);
+      end loop;
 
       --  Send some parameters
 
@@ -1870,8 +1876,14 @@ package body iSCSI.Target.Login is
       --
       --  TaskReporting            : List_Of_Values;
       --  X_NodeArchitecture       : List_Of_Values;
-      --
-      --  NotUnderstood            : Segment_Array (1 .. 8);
+
+      --  NotUnderstood keys
+
+      for Key of Decoded.NotUnderstood loop
+         exit when iSCSI.Text.Is_Null (Key);
+
+         Append_Key_Value (iSCSI.Text.Text (Key), NotUnderstood_Value);
+      end loop;
 
       --  Send some parameters
 
