@@ -19,6 +19,8 @@ package body iSCSI.Target.Login is
    Configured_MaxRecvDataSegmentLength : constant := 8_192;
    Configured_MaxBurstLength           : constant := 262_144;
    Configured_FirstBurstLength         : constant := 65_536;
+   Configured_DefaultTime2Wait         : constant := 2;
+   Configured_DefaultTime2Retain       : constant := 20;
 
    PLUS_SIGN              : constant := 16#2B#;
    SOLIDUS                : constant := 16#2F#;
@@ -773,46 +775,10 @@ package body iSCSI.Target.Login is
       use type A0B.Types.Unsigned_64;
       use type iSCSI.Text.UTF8_String;
 
-      procedure Append_Key_Value
-        (Key   : iSCSI.Text.UTF8_String;
-         Value : A0B.Types.Unsigned_64);
-
-      procedure Append_Key_Value
-        (Key   : iSCSI.Text.UTF8_String;
-         Value : String);
-
-      ----------------------
-      -- Append_Key_Value --
-      ----------------------
-
-      procedure Append_Key_Value
-        (Key   : iSCSI.Text.UTF8_String;
-         Value : String)
-      is
-         V : constant iSCSI.Text.UTF8_String (1 .. Value'Length)
-           with Import, Address => Value'Address;
-
-      begin
-         Append_Key_Value (Key, V);
-      end Append_Key_Value;
-
-      ----------------------
-      -- Append_Key_Value --
-      ----------------------
-
-      procedure Append_Key_Value
-        (Key   : iSCSI.Text.UTF8_String;
-         Value : A0B.Types.Unsigned_64) is
-      begin
-         Append_Key_Value (Key, A0B.Types.Unsigned_64'Image (Value));
-      end Append_Key_Value;
-
       Header : constant iSCSI.PDUs.Login_Request_Header
         with Import, Address => Header_Address;
       Parser : iSCSI.Text.Parser;
 
-      DefaultTime2Retain       : Numerical_Value;
-      DefaultTime2Wait         : Numerical_Value;
       IFMarker                 : Boolean_Value;
       OFMarker                 : Boolean_Value;
       ErrorRecoveryLevel       : Numerical_Value;
@@ -845,16 +811,12 @@ package body iSCSI.Target.Login is
 
             elsif Key = DefaultTime2Retain_Key then
                Decode_Numerical_Value
-                 (iSCSI.Text.Value (Parser), DefaultTime2Retain);
-               Decode_Numerical_Value
                  (Segment,
                   0,
                   3_600,
                   Decoded.DefaultTime2Retain);
 
             elsif Key = DefaultTime2Wait_Key then
-               Decode_Numerical_Value
-                 (iSCSI.Text.Value (Parser), DefaultTime2Wait);
                Decode_Numerical_Value
                  (Segment,
                   0,
@@ -1014,70 +976,6 @@ package body iSCSI.Target.Login is
       end loop;
 
       --
-      --  Validation
-      --
-
-      --  DefaultTime2Retain
-
-      if DefaultTime2Retain.Kind = None then
-         DefaultTime2Retain := (Kind => Value, Value => 20);
-
-      elsif DefaultTime2Retain.Kind = Value
-        and then DefaultTime2Retain.Value not in 0 .. 3_600
-      then
-         DefaultTime2Retain := (Kind => Error);
-      end if;
-
-      --  DefaultTime2Wait
-
-      if DefaultTime2Wait.Kind = None then
-         DefaultTime2Wait := (Kind => Value, Value => 2);
-
-      elsif DefaultTime2Wait.Kind = Value
-        and then DefaultTime2Wait.Value not in 0 .. 3_600
-      then
-         DefaultTime2Wait := (Kind => Error);
-      end if;
-
-      --  IFMarker                 : Boolean_Value;
-      --  OFMarker                 : Boolean_Value;
-      --  ErrorRecoveryLevel       : Numeric_Value;
-      --  MaxRecvDataSegmentLength : Numeric_Value;
-
-      --
-      --  Response text
-      --
-
-      case DefaultTime2Retain.Kind is
-         when None =>
-            null;
-
-         when Error =>
-            Append_Key_Value (DefaultTime2Retain_Key, Reject_Value);
-
-         when Value =>
-            Append_Key_Value
-              (DefaultTime2Retain_Key, DefaultTime2Retain.Value);
-      end case;
-
-      case DefaultTime2Wait.Kind is
-         when None =>
-            null;
-
-         when Error =>
-            Append_Key_Value (DefaultTime2Wait_Key, Reject_Value);
-
-         when Value =>
-            Append_Key_Value
-              (DefaultTime2Wait_Key, DefaultTime2Wait.Value);
-      end case;
-
-      --  IFMarker                 : Boolean_Value;
-      --  OFMarker                 : Boolean_Value;
-      --  ErrorRecoveryLevel       : Numeric_Value;
-      --  MaxRecvDataSegmentLength : Numeric_Value;
-
-      --
 
       Validate (Decoded);
    end Process;
@@ -1154,6 +1052,8 @@ package body iSCSI.Target.Login is
       Target_MaxRecvDataSegmentLength    : A0B.Types.Unsigned_24 := 8_192;
       --  MaxBurstLength                     : A0B.Types.Unsigned_24 := 262_144;
       --  FirstBurstLength                   : A0B.Types.Unsigned_24 := 65_536;
+      DefaultTime2Wait                   : Natural               := 2;
+      DefaultTime2Retain                 : Natural               := 20;
 
    begin
       --  iSCSIProtocolLevel, irrelevant when SessionType = Discovery
@@ -1230,6 +1130,44 @@ package body iSCSI.Target.Login is
             else
                Append_Key_Value (DataDigest_Key, Reject_Value);
             end if;
+      end case;
+
+      --  DefaultTime2Retain
+      --
+      --  XXX Share code with Normal session
+
+      case Decoded.DefaultTime2Retain.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (DefaultTime2Retain_Key, Reject_Value);
+
+         when Value =>
+            DefaultTime2Retain :=
+              Natural'Min
+                (Configured_DefaultTime2Retain,
+                 Natural (Decoded.DefaultTime2Retain.Value));
+            Append_Key_Value (DefaultTime2Retain_Key, DefaultTime2Retain);
+      end case;
+
+      --  DefaultTime2Wait
+      --
+      --  XXX Share code with Normal session
+
+      case Decoded.DefaultTime2Wait.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (DefaultTime2Wait_Key, Reject_Value);
+
+         when Value =>
+            DefaultTime2Wait :=
+              Natural'Max
+                (Configured_DefaultTime2Wait,
+                 Natural (Decoded.DefaultTime2Wait.Value));
+            Append_Key_Value (DefaultTime2Wait_Key, DefaultTime2Wait);
       end case;
 
       --  FirstBurstLength, irrelevant when SessionType = Discovery
@@ -1392,8 +1330,6 @@ package body iSCSI.Target.Login is
             Set_Error_Initiator_Error;
       end case;
 
-      --  DefaultTime2Wait         : Numerical_Value;
-      --  DefaultTime2Retain       : Numerical_Value;
       --  MaxOutstandingR2T        : Numerical_Value;
       --  DataPDUInOrder           : Boolean_Value;
       --  DataSequenceInOrder      : Boolean_Value;
@@ -1484,6 +1420,8 @@ package body iSCSI.Target.Login is
       Target_MaxRecvDataSegmentLength    : A0B.Types.Unsigned_24 := 8_192;
       MaxBurstLength                     : A0B.Types.Unsigned_24 := 262_144;
       FirstBurstLength                   : A0B.Types.Unsigned_24 := 65_536;
+      DefaultTime2Wait                   : Natural               := 2;
+      DefaultTime2Retain                 : Natural               := 20;
 
    begin
       --  iSCSIProtocolLevel
@@ -1575,6 +1513,44 @@ package body iSCSI.Target.Login is
             else
                Append_Key_Value (DataDigest_Key, Reject_Value);
             end if;
+      end case;
+
+      --  DefaultTime2Retain
+      --
+      --  XXX Share code with Discovery session
+
+      case Decoded.DefaultTime2Retain.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (DefaultTime2Retain_Key, Reject_Value);
+
+         when Value =>
+            DefaultTime2Retain :=
+              Natural'Min
+                (Configured_DefaultTime2Retain,
+                 Natural (Decoded.DefaultTime2Retain.Value));
+            Append_Key_Value (DefaultTime2Retain_Key, DefaultTime2Retain);
+      end case;
+
+      --  DefaultTime2Wait
+      --
+      --  XXX Share code with Discovery session
+
+      case Decoded.DefaultTime2Wait.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (DefaultTime2Wait_Key, Reject_Value);
+
+         when Value =>
+            DefaultTime2Wait :=
+              Natural'Max
+                (Configured_DefaultTime2Wait,
+                 Natural (Decoded.DefaultTime2Wait.Value));
+            Append_Key_Value (DefaultTime2Wait_Key, DefaultTime2Wait);
       end case;
 
       --  FirstBurstLength,
