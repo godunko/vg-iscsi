@@ -1501,9 +1501,18 @@ package body iSCSI.Target.Login is
             Append_Key_Value (TaskReporting_Key, Irrelevant_Value);
       end case;
 
-      --  --  [RFC7143]
-      --
-      --  X_NodeArchitecture       : List_Of_Values;
+      --  X_NodeArchitecture, Declarative, ignored
+
+      case Decoded.X_NodeArchitecture.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (X_NodeArchitecture_Key, Reject_Value);
+
+         when Value =>
+            null;
+      end case;
 
       --  NotUnderstood keys
 
@@ -2047,9 +2056,18 @@ package body iSCSI.Target.Login is
             end if;
       end case;
 
-      --  --  [RFC7143]
-      --
-      --  X_NodeArchitecture       : List_Of_Values;
+      --  X_NodeArchitecture, Declarative, ignored
+
+      case Decoded.X_NodeArchitecture.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (X_NodeArchitecture_Key, Reject_Value);
+
+         when Value =>
+            null;
+      end case;
 
       --  NotUnderstood keys
 
