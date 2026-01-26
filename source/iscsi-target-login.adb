@@ -24,6 +24,7 @@ package body iSCSI.Target.Login is
    Configured_MaxOutstandingR2T        : constant := 1;
    Configured_DataPDUInOrder           : constant Boolean := True;
    Configured_DataSequenceInOrder      : constant Boolean := True;
+   Configured_ErrorRecoveryLevel       : constant := 0;
 
    PLUS_SIGN              : constant := 16#2B#;
    SOLIDUS                : constant := 16#2F#;
@@ -1060,6 +1061,7 @@ package body iSCSI.Target.Login is
       --  MaxOutstandingR2T                  : Natural               := 1;
       --  DataPDUInOrder                     : Boolean := True;
       --  DataSequenceInOrder                : Boolean := True;
+      ErrorRecoveryLevel                 : Natural               := 0;
 
    begin
       --  iSCSIProtocolLevel, irrelevant when SessionType = Discovery
@@ -1200,6 +1202,22 @@ package body iSCSI.Target.Login is
                 (Configured_DefaultTime2Wait,
                  Natural (Decoded.DefaultTime2Wait.Value));
             Append_Key_Value (DefaultTime2Wait_Key, DefaultTime2Wait);
+      end case;
+
+      --  ErrorRecoveryLevel
+
+      case Decoded.ErrorRecoveryLevel.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (ErrorRecoveryLevel_Key, Reject_Value);
+
+         when Value =>
+            --  [RFC7143] 7.4.1: `0` must be used for Discovery session
+
+            ErrorRecoveryLevel := 0;
+            Append_Key_Value (ErrorRecoveryLevel_Key, ErrorRecoveryLevel);
       end case;
 
       --  FirstBurstLength, irrelevant when SessionType = Discovery
@@ -1375,8 +1393,6 @@ package body iSCSI.Target.Login is
             Set_Error_Initiator_Error;
       end case;
 
-      --  ErrorRecoveryLevel       : Numerical_Value;
-      --
       --  --  [RFC3720], obsolete in [RFC7143]
       --
       --  OFMarker                 : Boolean_Value;
@@ -1467,6 +1483,7 @@ package body iSCSI.Target.Login is
       MaxOutstandingR2T                  : Natural               := 1;
       DataPDUInOrder                     : Boolean               := True;
       DataSequenceInOrder                : Boolean               := True;
+      ErrorRecoveryLevel                 : Natural               := 0;
 
    begin
       --  iSCSIProtocolLevel
@@ -1627,6 +1644,23 @@ package body iSCSI.Target.Login is
                 (Configured_DefaultTime2Wait,
                  Natural (Decoded.DefaultTime2Wait.Value));
             Append_Key_Value (DefaultTime2Wait_Key, DefaultTime2Wait);
+      end case;
+
+      --  ErrorRecoveryLevel
+
+      case Decoded.ErrorRecoveryLevel.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (ErrorRecoveryLevel_Key, Reject_Value);
+
+         when Value =>
+            ErrorRecoveryLevel :=
+              Natural'Min
+                (Configured_ErrorRecoveryLevel,
+                 Natural (Decoded.ErrorRecoveryLevel.Value));
+            Append_Key_Value (ErrorRecoveryLevel_Key, ErrorRecoveryLevel);
       end case;
 
       --  FirstBurstLength,
@@ -1825,8 +1859,6 @@ package body iSCSI.Target.Login is
             Set_Error_Initiator_Error;
       end case;
 
-      --  ErrorRecoveryLevel       : Numerical_Value;
-      --
       --  --  [RFC3720], obsolete in [RFC7143]
       --
       --  OFMarker                 : Boolean_Value;
