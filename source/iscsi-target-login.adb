@@ -1292,6 +1292,36 @@ package body iSCSI.Target.Login is
             end if;
       end case;
 
+      --  IFMarkInt, obsolete
+      --
+      --  XXX Can be shared with Normal session
+
+      case Decoded.IFMarkInt.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (IFMarkInt_Key, Reject_Value);
+
+         when Value =>
+            Append_Key_Value (IFMarkInt_Key, Reject_Value);
+      end case;
+
+      --  IFMarker, obsolete
+      --
+      --  XXX Can be shared with Normal session
+
+      case Decoded.IFMarker.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (IFMarker_Key, Reject_Value);
+
+         when Value =>
+            Append_Key_Value (IFMarker_Key, Reject_Value);
+      end case;
+
       --  InitiatorAlias, Declarative, optional
 
       case Decoded.InitiatorAlias.Kind is
@@ -1356,6 +1386,36 @@ package body iSCSI.Target.Login is
          when Value =>
             Initiator_MaxRecvDataSegmentLength :=
               A0B.Types.Unsigned_24 (Decoded.MaxRecvDataSegmentLength.Value);
+      end case;
+
+      --  OFMarkInt, obsolete
+      --
+      --  XXX Can be shared wirh Normal session
+
+      case Decoded.OFMarkInt.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (OFMarkInt_Key, Reject_Value);
+
+         when Value =>
+            Append_Key_Value (OFMarkInt_Key, Reject_Value);
+      end case;
+
+      --  OFMarker, obsolete
+      --
+      --  XXX Can be shared wirh Normal session
+
+      case Decoded.OFMarker.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (OFMarker_Key, Reject_Value);
+
+         when Value =>
+            Append_Key_Value (OFMarker_Key, Reject_Value);
       end case;
 
       --  SendTargets, irrelevant in Login Request
@@ -1441,13 +1501,6 @@ package body iSCSI.Target.Login is
             Append_Key_Value (TaskReporting_Key, Irrelevant_Value);
       end case;
 
-      --  --  [RFC3720], obsolete in [RFC7143]
-      --
-      --  OFMarker                 : Boolean_Value;
-      --  IFMarker                 : Boolean_Value;
-      --  OFMarkInt                : Numerical_Value;
-      --  IFMarkInt                : Numerical_Value;
-      --
       --  --  [RFC7143]
       --
       --  X_NodeArchitecture       : List_Of_Values;
@@ -1768,6 +1821,36 @@ package body iSCSI.Target.Login is
             end if;
       end case;
 
+      --  IFMarkInt, obsolete
+      --
+      --  XXX Can be shared with Discovery session
+
+      case Decoded.IFMarkInt.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (IFMarkInt_Key, Reject_Value);
+
+         when Value =>
+            Append_Key_Value (IFMarkInt_Key, Reject_Value);
+      end case;
+
+      --  IFMarker, obsolete
+      --
+      --  XXX Can be shread with Discovery session
+
+      case Decoded.IFMarker.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (IFMarker_Key, Reject_Value);
+
+         when Value =>
+            Append_Key_Value (IFMarker_Key, Reject_Value);
+      end case;
+
       --  InitiatorAlias, Declarative, optional
 
       case Decoded.InitiatorAlias.Kind is
@@ -1840,6 +1923,36 @@ package body iSCSI.Target.Login is
          when Value =>
             Initiator_MaxRecvDataSegmentLength :=
               A0B.Types.Unsigned_24 (Decoded.MaxRecvDataSegmentLength.Value);
+      end case;
+
+      --  OFMarkInt, obsolete
+      --
+      --  XXX Can be shared wirh Discovery session
+
+      case Decoded.OFMarkInt.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (OFMarkInt_Key, Reject_Value);
+
+         when Value =>
+            Append_Key_Value (OFMarkInt_Key, Reject_Value);
+      end case;
+
+      --  OFMarker, obsolete
+      --
+      --  XXX Can be shared wirh Discovery session
+
+      case Decoded.OFMarker.Kind is
+         when None =>
+            null;
+
+         when Error =>
+            Append_Key_Value (OFMarker_Key, Reject_Value);
+
+         when Value =>
+            Append_Key_Value (OFMarker_Key, Reject_Value);
       end case;
 
       --  SendTargets, irrelevant in Login Request
@@ -1934,13 +2047,6 @@ package body iSCSI.Target.Login is
             end if;
       end case;
 
-      --  --  [RFC3720], obsolete in [RFC7143]
-      --
-      --  OFMarker                 : Boolean_Value;
-      --  IFMarker                 : Boolean_Value;
-      --  OFMarkInt                : Numerical_Value;
-      --  IFMarkInt                : Numerical_Value;
-      --
       --  --  [RFC7143]
       --
       --  X_NodeArchitecture       : List_Of_Values;
