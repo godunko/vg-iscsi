@@ -80,4 +80,80 @@ package iSCSI.PDUs with Pure is
       ExpStatSN          at 28 range 0 .. 31;
    end record;
 
+   type Login_Response_Header is record
+      Reserved_0_0_1     : A0B.Types.Reserved_2    := A0B.Types.Zero;
+      Opcode             : iSCSI.Types.Opcode_Type :=
+        iSCSI.Types.Login_Response;
+      Transit            : Boolean;
+      Continue           : Boolean;
+      Reserved_1_2_3     : A0B.Types.Reserved_2    := A0B.Types.Zero;
+      CSG                : iSCSI.Types.Stage;
+      NSG                : iSCSI.Types.Stage;
+      Version_Max        : A0B.Types.Unsigned_8;
+      Version_Active     : A0B.Types.Unsigned_8;
+      TotalAHSLength     : A0B.Types.Unsigned_8;
+      DataSegmentLength  : A0B.Types.Unsigned_24;
+      ISID               : A0B.Types.Unsigned_48;
+      TSIH               : A0B.Types.Unsigned_16;
+      Initiator_Task_Tag : A0B.Types.Unsigned_32;
+      Reserved_20        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_21        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_22        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_23        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      StatSN             : A0B.Types.Unsigned_32;
+      ExpCmdSN           : A0B.Types.Unsigned_32;
+      MaxCmdSN           : A0B.Types.Unsigned_32;
+      Status_Class       : A0B.Types.Unsigned_8;
+      Status_Detail      : A0B.Types.Unsigned_8;
+      Reserved_38        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_39        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_40        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_41        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_42        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_43        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_44        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_45        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_46        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_47        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+   end record
+     with Size                 => Basic_Header_Segment_Length * Byte_Size,
+          Bit_Order            => System.High_Order_First,
+          Scalar_Storage_Order => System.High_Order_First;
+
+   for Login_Response_Header use record
+      Reserved_0_0_1     at 0 range 0 .. 1;
+      Opcode             at 0 range 2 .. 7;
+      Transit            at 1 range 0 .. 0;
+      Continue           at 1 range 1 .. 1;
+      Reserved_1_2_3     at 1 range 2 .. 3;
+      CSG                at 1 range 4 .. 5;
+      NSG                at 1 range 6 .. 7;
+      Version_Max        at 2 range 0 .. 7;
+      Version_Active     at 3 range 0 .. 7;
+      TotalAHSLength     at 4 range 0 .. 7;
+      DataSegmentLength  at 5 range 0 .. 23;
+      ISID               at 8 range 0 .. 47;
+      TSIH               at 14 range 0 .. 15;
+      Initiator_Task_Tag at 16 range 0 .. 31;
+      Reserved_20        at 20 range 0 .. 7;
+      Reserved_21        at 21 range 0 .. 7;
+      Reserved_22        at 22 range 0 .. 7;
+      Reserved_23        at 23 range 0 .. 7;
+      StatSN             at 24 range 0 .. 31;
+      ExpCmdSN           at 28 range 0 .. 31;
+      MaxCmdSN           at 32 range 0 .. 31;
+      Status_Class       at 36 range 0 .. 7;
+      Status_Detail      at 37 range 0 .. 7;
+      Reserved_38        at 38 range 0 .. 7;
+      Reserved_39        at 39 range 0 .. 7;
+      Reserved_40        at 40 range 0 .. 7;
+      Reserved_41        at 41 range 0 .. 7;
+      Reserved_42        at 42 range 0 .. 7;
+      Reserved_43        at 43 range 0 .. 7;
+      Reserved_44        at 44 range 0 .. 7;
+      Reserved_45        at 45 range 0 .. 7;
+      Reserved_46        at 46 range 0 .. 7;
+      Reserved_47        at 47 range 0 .. 7;
+   end record;
+
 end iSCSI.PDUs;
