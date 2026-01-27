@@ -28,6 +28,7 @@ package body iSCSI.Target.Login is
    Configured_DataSequenceInOrder      : constant Boolean := True;
    Configured_ErrorRecoveryLevel       : constant := 0;
 
+   NUL                    : constant := 16#00#;
    PLUS_SIGN              : constant := 16#2B#;
    SOLIDUS                : constant := 16#2F#;
    DIGIT_ZERO             : constant := 16#30#;
@@ -232,6 +233,17 @@ package body iSCSI.Target.Login is
      iSCSI.Text.UTF8_String (1 .. Yes_String'Length)
        with Import, Address => Yes_String'Address;
 
+   type Encoder is record
+      Address  : System.Address;
+      Capacity : A0B.Types.Unsigned_32;
+      Length   : A0B.Types.Unsigned_32;
+   end record;
+
+   procedure Initialize
+     (Self     : out Encoder;
+      Address  : System.Address;
+      Capacity : A0B.Types.Unsigned_32);
+
    function To_String (Item : iSCSI.Text.UTF8_String) return String;
 
    procedure Decode_Boolean_Value
@@ -296,23 +308,28 @@ package body iSCSI.Target.Login is
    --  Decode `SendTargets`
 
    procedure Append_Key_Value
-     (Key   : iSCSI.Text.UTF8_String;
+     (Self  : in out Encoder;
+      Key   : iSCSI.Text.UTF8_String;
       Value : iSCSI.Text.UTF8_String);
 
    procedure Append_Key_Value
-     (Key   : iSCSI.Text.UTF8_String;
+     (Self  : in out Encoder;
+      Key   : iSCSI.Text.UTF8_String;
       Value : Boolean);
 
    procedure Append_Key_Value
-     (Key   : iSCSI.Text.UTF8_String;
+     (Self  : in out Encoder;
+      Key   : iSCSI.Text.UTF8_String;
       Value : Natural);
 
    procedure Append_Key_Value
-     (Key   : iSCSI.Text.UTF8_String;
+     (Self  : in out Encoder;
+      Key   : iSCSI.Text.UTF8_String;
       Value : A0B.Types.Unsigned_24);
 
    procedure Append_Key_Value
-     (Key   : iSCSI.Text.UTF8_String;
+     (Self  : in out Encoder;
+      Key   : iSCSI.Text.UTF8_String;
       Value : TaskReporting_Type);
 
    procedure Set_Error_Initiator_Error is null;
@@ -328,21 +345,31 @@ package body iSCSI.Target.Login is
    procedure Set_Error_Session_Type_Not_Supported is null;
    --  XXX Set 0209 "Session type not supported" code !!!
 
-   procedure Validate (Decoded : Decoded_Operational_Parameters);
+   procedure Validate
+     (Decoded : Decoded_Operational_Parameters;
+      Encoder : in out iSCSI.Target.Login.Encoder);
 
    procedure Validate_Discovery_Session
-     (Decoded : Decoded_Operational_Parameters);
+     (Decoded : Decoded_Operational_Parameters;
+      Encoder : in out iSCSI.Target.Login.Encoder);
 
    procedure Validate_Normal_Session
-     (Decoded : Decoded_Operational_Parameters);
+     (Decoded : Decoded_Operational_Parameters;
+      Encoder : in out iSCSI.Target.Login.Encoder);
 
    ----------------------
    -- Append_Key_Value --
    ----------------------
 
    procedure Append_Key_Value
-     (Key   : iSCSI.Text.UTF8_String;
-      Value : iSCSI.Text.UTF8_String) is
+     (Self  : in out Encoder;
+      Key   : iSCSI.Text.UTF8_String;
+      Value : iSCSI.Text.UTF8_String)
+   is
+      use System.Storage_Elements;
+
+      use type A0B.Types.Unsigned_32;
+
    begin
       Ada.Text_IO.Put ('`');
       Ada.Text_IO.Put (To_String (Key));
@@ -350,6 +377,42 @@ package body iSCSI.Target.Login is
       Ada.Text_IO.Put (To_String (Value));
       Ada.Text_IO.Put ('`');
       Ada.Text_IO.New_Line;
+
+      declare
+         Storage : iSCSI.Text.UTF8_String (1 .. Key'Length)
+           with Import, Address => Self.Address + Storage_Offset (Self.Length);
+
+      begin
+         Storage := Key;
+         Self.Length := @ + Key'Length;
+      end;
+
+      declare
+         Storage : iSCSI.Text.UTF8_String (1 .. 1)
+           with Import, Address => Self.Address + Storage_Offset (Self.Length);
+
+      begin
+         Storage (Storage'First) := EQUALS_SIGN;
+         Self.Length := @ + 1;
+      end;
+
+      declare
+         Storage : iSCSI.Text.UTF8_String (1 .. Value'Length)
+           with Import, Address => Self.Address + Storage_Offset (Self.Length);
+
+      begin
+         Storage := Value;
+         Self.Length := @ + Value'Length;
+      end;
+
+      declare
+         Storage : iSCSI.Text.UTF8_String (1 .. 1)
+           with Import, Address => Self.Address + Storage_Offset (Self.Length);
+
+      begin
+         Storage (Storage'First) := NUL;
+         Self.Length := @ + 1;
+      end;
    end Append_Key_Value;
 
    ----------------------
@@ -357,11 +420,14 @@ package body iSCSI.Target.Login is
    ----------------------
 
    procedure Append_Key_Value
-     (Key   : iSCSI.Text.UTF8_String;
+     (Self  : in out Encoder;
+      Key   : iSCSI.Text.UTF8_String;
       Value : Boolean) is
    begin
       Append_Key_Value
-        (Key, (case Value is when False => No_Value, when True => Yes_Value));
+        (Self,
+         Key,
+         (case Value is when False => No_Value, when True => Yes_Value));
    end Append_Key_Value;
 
    ----------------------
@@ -369,7 +435,8 @@ package body iSCSI.Target.Login is
    ----------------------
 
    procedure Append_Key_Value
-     (Key   : iSCSI.Text.UTF8_String;
+     (Self  : in out Encoder;
+      Key   : iSCSI.Text.UTF8_String;
       Value : Natural)
    is
       Image_String : constant String := Natural'Image (Value);
@@ -377,7 +444,7 @@ package body iSCSI.Target.Login is
         with Import, Address => Image_String'Address;
 
    begin
-      Append_Key_Value (Key, Image (Image'First + 1 .. Image'Last));
+      Append_Key_Value (Self, Key, Image (Image'First + 1 .. Image'Last));
    end Append_Key_Value;
 
    ----------------------
@@ -385,7 +452,8 @@ package body iSCSI.Target.Login is
    ----------------------
 
    procedure Append_Key_Value
-     (Key   : iSCSI.Text.UTF8_String;
+     (Self  : in out Encoder;
+      Key   : iSCSI.Text.UTF8_String;
       Value : A0B.Types.Unsigned_24)
    is
       Image_String : constant String := A0B.Types.Unsigned_24'Image (Value);
@@ -393,7 +461,7 @@ package body iSCSI.Target.Login is
         with Import, Address => Image_String'Address;
 
    begin
-      Append_Key_Value (Key, Image (Image'First + 1 .. Image'Last));
+      Append_Key_Value (Self, Key, Image (Image'First + 1 .. Image'Last));
    end Append_Key_Value;
 
    ----------------------
@@ -401,11 +469,13 @@ package body iSCSI.Target.Login is
    ----------------------
 
    procedure Append_Key_Value
-     (Key   : iSCSI.Text.UTF8_String;
+     (Self  : in out Encoder;
+      Key   : iSCSI.Text.UTF8_String;
       Value : TaskReporting_Type) is
    begin
       Append_Key_Value
-        (Key,
+        (Self,
+         Key,
          (case Value is
              when RFC3720       => RFC3720_Value,
              when ResponseFence => ResponseFence_Value,
@@ -801,6 +871,21 @@ package body iSCSI.Target.Login is
      (Image   : iSCSI.Text.Segment;
       Decoded : out TargetAddress_Value) renames Decode_iSCSI_Name_Value;
 
+   ----------------
+   -- Initialize --
+   ----------------
+
+   procedure Initialize
+     (Self     : out Encoder;
+      Address  : System.Address;
+      Capacity : A0B.Types.Unsigned_32) is
+   begin
+      Self :=
+        (Address  => Address,
+         Capacity => Capacity,
+         Length   => 0);
+   end Initialize;
+
    -------------
    -- Process --
    -------------
@@ -808,7 +893,8 @@ package body iSCSI.Target.Login is
    procedure Process
      (Header_Address        : System.Address;
       Request_Data_Address  : System.Address;
-      Response_Data_Address : System.Address with Unreferenced)
+      Response_Data_Address : System.Address;
+      Response_Data_Length  : out A0B.Types.Unsigned_32)
    is
       use type A0B.Types.Unsigned_64;
       use type iSCSI.Text.UTF8_String;
@@ -822,6 +908,7 @@ package body iSCSI.Target.Login is
       ErrorRecoveryLevel       : Numerical_Value;
 
       Decoded : Decoded_Operational_Parameters;
+      Encoder : Login.Encoder;
 
    begin
       iSCSI.Text.Initialize
@@ -1013,9 +1100,13 @@ package body iSCSI.Target.Login is
          end;
       end loop;
 
+      Initialize (Encoder, Response_Data_Address, 8_192);
+
       --
 
-      Validate (Decoded);
+      Validate (Decoded, Encoder);
+
+      Response_Data_Length := Encoder.Length;
    end Process;
 
    ---------------
@@ -1034,7 +1125,10 @@ package body iSCSI.Target.Login is
    -- Validate --
    --------------
 
-   procedure Validate (Decoded : Decoded_Operational_Parameters) is
+   procedure Validate
+     (Decoded : Decoded_Operational_Parameters;
+      Encoder : in out iSCSI.Target.Login.Encoder)
+   is
       SessionType : iSCSI.Target.Login.SessionType := Normal;
 
    begin
@@ -1049,7 +1143,7 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (SessionType_Key, Reject_Value);
+            Append_Key_Value (Encoder, SessionType_Key, Reject_Value);
 
             Set_Error_Session_Type_Not_Supported;
 
@@ -1059,10 +1153,10 @@ package body iSCSI.Target.Login is
 
       case SessionType is
          when Discovery =>
-            Validate_Discovery_Session (Decoded);
+            Validate_Discovery_Session (Decoded, Encoder);
 
          when Normal =>
-            Validate_Normal_Session (Decoded);
+            Validate_Normal_Session (Decoded, Encoder);
       end case;
    end Validate;
 
@@ -1071,7 +1165,8 @@ package body iSCSI.Target.Login is
    --------------------------------
 
    procedure Validate_Discovery_Session
-     (Decoded : Decoded_Operational_Parameters)
+     (Decoded : Decoded_Operational_Parameters;
+      Encoder : in out iSCSI.Target.Login.Encoder)
    is
       use type iSCSI.Text.Segment;
 
@@ -1106,10 +1201,11 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (iSCSIProtocolLevel_Key, Reject_Value);
+            Append_Key_Value (Encoder, iSCSIProtocolLevel_Key, Reject_Value);
 
          when Value =>
-            Append_Key_Value (iSCSIProtocolLevel_Key, Irrelevant_Value);
+            Append_Key_Value
+              (Encoder, iSCSIProtocolLevel_Key, Irrelevant_Value);
       end case;
 
       --  ImmediateData, irrelevant when SessionType = Discovery
@@ -1119,10 +1215,10 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (ImmediateData_Key, Reject_Value);
+            Append_Key_Value (Encoder, ImmediateData_Key, Reject_Value);
 
          when Value =>
-            Append_Key_Value (ImmediateData_Key, Irrelevant_Value);
+            Append_Key_Value (Encoder, ImmediateData_Key, Irrelevant_Value);
       end case;
 
       --  InitialR2T, irrelevant when SessionType = Discovery
@@ -1132,10 +1228,10 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (InitialR2T_Key, Reject_Value);
+            Append_Key_Value (Encoder, InitialR2T_Key, Reject_Value);
 
          when Value =>
-            Append_Key_Value (InitialR2T_Key, Irrelevant_Value);
+            Append_Key_Value (Encoder, InitialR2T_Key, Irrelevant_Value);
       end case;
 
       --  MaxBurstLength, irrelevant when SessionType = Discovery
@@ -1145,10 +1241,10 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (MaxBurstLength_Key, Reject_Value);
+            Append_Key_Value (Encoder, MaxBurstLength_Key, Reject_Value);
 
          when Value =>
-            Append_Key_Value (MaxBurstLength_Key, Irrelevant_Value);
+            Append_Key_Value (Encoder, MaxBurstLength_Key, Irrelevant_Value);
       end case;
 
       --  DataDigest
@@ -1162,16 +1258,16 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (DataDigest_Key, Reject_Value);
+            Append_Key_Value (Encoder, DataDigest_Key, Reject_Value);
 
             --  XXX Should error be reported ???
 
          when Value =>
             if Decoded.DataDigest.Value = None_Value then
-               Append_Key_Value (DataDigest_Key, None_Value);
+               Append_Key_Value (Encoder, DataDigest_Key, None_Value);
 
             else
-               Append_Key_Value (DataDigest_Key, Reject_Value);
+               Append_Key_Value (Encoder, DataDigest_Key, Reject_Value);
             end if;
       end case;
 
@@ -1182,10 +1278,10 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (DataPDUInOrder_Key, Reject_Value);
+            Append_Key_Value (Encoder, DataPDUInOrder_Key, Reject_Value);
 
          when Value =>
-            Append_Key_Value (DataPDUInOrder_Key, Irrelevant_Value);
+            Append_Key_Value (Encoder, DataPDUInOrder_Key, Irrelevant_Value);
       end case;
 
       --  DataSequenceInOrder, irrelevant when SessionType = Discovery
@@ -1195,10 +1291,11 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (DataSequenceInOrder_Key, Reject_Value);
+            Append_Key_Value (Encoder, DataSequenceInOrder_Key, Reject_Value);
 
          when Value =>
-            Append_Key_Value (DataSequenceInOrder_Key, Irrelevant_Value);
+            Append_Key_Value
+              (Encoder, DataSequenceInOrder_Key, Irrelevant_Value);
       end case;
 
       --  DefaultTime2Retain
@@ -1210,14 +1307,15 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (DefaultTime2Retain_Key, Reject_Value);
+            Append_Key_Value (Encoder, DefaultTime2Retain_Key, Reject_Value);
 
          when Value =>
             DefaultTime2Retain :=
               Natural'Min
                 (Configured_DefaultTime2Retain,
                  Natural (Decoded.DefaultTime2Retain.Value));
-            Append_Key_Value (DefaultTime2Retain_Key, DefaultTime2Retain);
+            Append_Key_Value
+              (Encoder, DefaultTime2Retain_Key, DefaultTime2Retain);
       end case;
 
       --  DefaultTime2Wait
@@ -1229,14 +1327,15 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (DefaultTime2Wait_Key, Reject_Value);
+            Append_Key_Value (Encoder, DefaultTime2Wait_Key, Reject_Value);
 
          when Value =>
             DefaultTime2Wait :=
               Natural'Max
                 (Configured_DefaultTime2Wait,
                  Natural (Decoded.DefaultTime2Wait.Value));
-            Append_Key_Value (DefaultTime2Wait_Key, DefaultTime2Wait);
+            Append_Key_Value
+              (Encoder, DefaultTime2Wait_Key, DefaultTime2Wait);
       end case;
 
       --  ErrorRecoveryLevel
@@ -1246,13 +1345,14 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (ErrorRecoveryLevel_Key, Reject_Value);
+            Append_Key_Value (Encoder, ErrorRecoveryLevel_Key, Reject_Value);
 
          when Value =>
             --  [RFC7143] 7.4.1: `0` must be used for Discovery session
 
             ErrorRecoveryLevel := 0;
-            Append_Key_Value (ErrorRecoveryLevel_Key, ErrorRecoveryLevel);
+            Append_Key_Value
+              (Encoder, ErrorRecoveryLevel_Key, ErrorRecoveryLevel);
       end case;
 
       --  FirstBurstLength, irrelevant when SessionType = Discovery
@@ -1262,10 +1362,11 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (FirstBurstLength_Key, Reject_Value);
+            Append_Key_Value (Encoder, FirstBurstLength_Key, Reject_Value);
 
          when Value =>
-            Append_Key_Value (FirstBurstLength_Key, Irrelevant_Value);
+            Append_Key_Value
+              (Encoder, FirstBurstLength_Key, Irrelevant_Value);
       end case;
 
       --  HeaderDigest
@@ -1279,16 +1380,16 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (HeaderDigest_Key, Reject_Value);
+            Append_Key_Value (Encoder, HeaderDigest_Key, Reject_Value);
 
             --  XXX Should error be reported ???
 
          when Value =>
             if Decoded.HeaderDigest.Value = None_Value then
-               Append_Key_Value (HeaderDigest_Key, None_Value);
+               Append_Key_Value (Encoder, HeaderDigest_Key, None_Value);
 
             else
-               Append_Key_Value (HeaderDigest_Key, Reject_Value);
+               Append_Key_Value (Encoder, HeaderDigest_Key, Reject_Value);
             end if;
       end case;
 
@@ -1301,10 +1402,10 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (IFMarkInt_Key, Reject_Value);
+            Append_Key_Value (Encoder, IFMarkInt_Key, Reject_Value);
 
          when Value =>
-            Append_Key_Value (IFMarkInt_Key, Reject_Value);
+            Append_Key_Value (Encoder, IFMarkInt_Key, Reject_Value);
       end case;
 
       --  IFMarker, obsolete
@@ -1316,10 +1417,10 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (IFMarker_Key, Reject_Value);
+            Append_Key_Value (Encoder, IFMarker_Key, Reject_Value);
 
          when Value =>
-            Append_Key_Value (IFMarker_Key, Reject_Value);
+            Append_Key_Value (Encoder, IFMarker_Key, Reject_Value);
       end case;
 
       --  InitiatorAlias, Declarative, optional
@@ -1329,7 +1430,7 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (InitiatorAlias_Key, Reject_Value);
+            Append_Key_Value (Encoder, InitiatorAlias_Key, Reject_Value);
 
          when Value =>
             InitiatorAlias := Decoded.InitiatorAlias.Value;
@@ -1342,7 +1443,7 @@ package body iSCSI.Target.Login is
             Set_Error_Missing_Parameter;
 
          when Error =>
-            Append_Key_Value (InitiatorName_Key, Reject_Value);
+            Append_Key_Value (Encoder, InitiatorName_Key, Reject_Value);
 
          when Value =>
             InitiatorName := Decoded.InitiatorName.Value;
@@ -1355,10 +1456,10 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (MaxConnections_Key, Reject_Value);
+            Append_Key_Value (Encoder, MaxConnections_Key, Reject_Value);
 
          when Value =>
-            Append_Key_Value (MaxConnections_Key, Irrelevant_Value);
+            Append_Key_Value (Encoder, MaxConnections_Key, Irrelevant_Value);
       end case;
 
       --  MaxOutstandingR2T, irrelevant when SessionType = Discovery
@@ -1368,10 +1469,11 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (MaxOutstandingR2T_Key, Reject_Value);
+            Append_Key_Value (Encoder, MaxOutstandingR2T_Key, Reject_Value);
 
          when Value =>
-            Append_Key_Value (MaxOutstandingR2T_Key, Irrelevant_Value);
+            Append_Key_Value
+              (Encoder, MaxOutstandingR2T_Key, Irrelevant_Value);
       end case;
 
       --  MaxRecvDataSegmentLength, Declarative
@@ -1381,7 +1483,8 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (MaxRecvDataSegmentLength_Key, Reject_Value);
+            Append_Key_Value
+              (Encoder, MaxRecvDataSegmentLength_Key, Reject_Value);
 
          when Value =>
             Initiator_MaxRecvDataSegmentLength :=
@@ -1397,10 +1500,10 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (OFMarkInt_Key, Reject_Value);
+            Append_Key_Value (Encoder, OFMarkInt_Key, Reject_Value);
 
          when Value =>
-            Append_Key_Value (OFMarkInt_Key, Reject_Value);
+            Append_Key_Value (Encoder, OFMarkInt_Key, Reject_Value);
       end case;
 
       --  OFMarker, obsolete
@@ -1412,10 +1515,10 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (OFMarker_Key, Reject_Value);
+            Append_Key_Value (Encoder, OFMarker_Key, Reject_Value);
 
          when Value =>
-            Append_Key_Value (OFMarker_Key, Reject_Value);
+            Append_Key_Value (Encoder, OFMarker_Key, Reject_Value);
       end case;
 
       --  SendTargets, irrelevant in Login Request
@@ -1425,10 +1528,10 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (SendTargets_Key, Reject_Value);
+            Append_Key_Value (Encoder, SendTargets_Key, Reject_Value);
 
          when Value =>
-            Append_Key_Value (SendTargets_Key, Irrelevant_Value);
+            Append_Key_Value (Encoder, SendTargets_Key, Irrelevant_Value);
       end case;
 
       --  TargetAddress, never send by the initiator
@@ -1438,10 +1541,10 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (TargetAddress_Key, Reject_Value);
+            Append_Key_Value (Encoder, TargetAddress_Key, Reject_Value);
 
          when Value =>
-            Append_Key_Value (TargetAddress_Key, Reject_Value);
+            Append_Key_Value (Encoder, TargetAddress_Key, Reject_Value);
       end case;
 
       --  TargetAlias, never send by the initiator
@@ -1451,10 +1554,10 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (TargetAlias_Key, Reject_Value);
+            Append_Key_Value (Encoder, TargetAlias_Key, Reject_Value);
 
          when Value =>
-            Append_Key_Value (TargetAlias_Key, Reject_Value);
+            Append_Key_Value (Encoder, TargetAlias_Key, Reject_Value);
       end case;
 
       --  TargetName, Declarative, optional when SessionType = Discovery
@@ -1464,7 +1567,7 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (TargetName_Key, Reject_Value);
+            Append_Key_Value (Encoder, TargetName_Key, Reject_Value);
 
          when Value =>
             TargetName := Decoded.TargetName.Value;
@@ -1478,12 +1581,14 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (TargetPortalGroupTag_Key, Reject_Value);
+            Append_Key_Value
+              (Encoder, TargetPortalGroupTag_Key, Reject_Value);
 
             Set_Error_Initiator_Error;
 
          when Value =>
-            Append_Key_Value (TargetPortalGroupTag_Key, Reject_Value);
+            Append_Key_Value
+              (Encoder, TargetPortalGroupTag_Key, Reject_Value);
 
             Set_Error_Initiator_Error;
       end case;
@@ -1495,10 +1600,10 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (TaskReporting_Key, Reject_Value);
+            Append_Key_Value (Encoder, TaskReporting_Key, Reject_Value);
 
          when Value =>
-            Append_Key_Value (TaskReporting_Key, Irrelevant_Value);
+            Append_Key_Value (Encoder, TaskReporting_Key, Irrelevant_Value);
       end case;
 
       --  X_NodeArchitecture, Declarative, ignored
@@ -1508,7 +1613,7 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (X_NodeArchitecture_Key, Reject_Value);
+            Append_Key_Value (Encoder, X_NodeArchitecture_Key, Reject_Value);
 
          when Value =>
             null;
@@ -1519,7 +1624,8 @@ package body iSCSI.Target.Login is
       for Key of Decoded.NotUnderstood loop
          exit when iSCSI.Text.Is_Null (Key);
 
-         Append_Key_Value (iSCSI.Text.Text (Key), NotUnderstood_Value);
+         Append_Key_Value
+           (Encoder, iSCSI.Text.Text (Key), NotUnderstood_Value);
       end loop;
 
       --  Send some parameters
@@ -1533,17 +1639,17 @@ package body iSCSI.Target.Login is
       --  XXX Send on redirect and on `SendTargets` only
 
       if Decoded.TargetPortalGroupTag.Kind = None then
-         Append_Key_Value (TargetPortalGroupTag_Key, Natural'(1));
+         Append_Key_Value (Encoder, TargetPortalGroupTag_Key, Natural'(1));
       end if;
 
       if Decoded.MaxRecvDataSegmentLength.Kind /= Error then
          Target_MaxRecvDataSegmentLength :=
            Configured_MaxRecvDataSegmentLength;
          Append_Key_Value
-           (MaxRecvDataSegmentLength_Key, Target_MaxRecvDataSegmentLength);
+           (Encoder,
+            MaxRecvDataSegmentLength_Key,
+            Target_MaxRecvDataSegmentLength);
       end if;
-
-      raise Program_Error;
    end Validate_Discovery_Session;
 
    -----------------------------
@@ -1551,7 +1657,8 @@ package body iSCSI.Target.Login is
    -----------------------------
 
    procedure Validate_Normal_Session
-     (Decoded : Decoded_Operational_Parameters)
+     (Decoded : Decoded_Operational_Parameters;
+      Encoder : in out iSCSI.Target.Login.Encoder)
    is
       use type A0B.Types.Unsigned_24;
       use type iSCSI.Text.Segment;
@@ -1572,7 +1679,7 @@ package body iSCSI.Target.Login is
            with Import, Address => Value'Address;
 
       begin
-         Append_Key_Value (Key, V);
+         Append_Key_Value (Encoder, Key, V);
       end Append_Key_Value;
 
       RFC7143 : constant := 1;
@@ -1609,7 +1716,7 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (iSCSIProtocolLevel_Key, Reject_Value);
+            Append_Key_Value (Encoder, iSCSIProtocolLevel_Key, Reject_Value);
 
             Set_Error_Unsupported_Version;
 
@@ -1618,7 +1725,8 @@ package body iSCSI.Target.Login is
               Natural'Min
                 (Natural (Decoded.iSCSIProtocolLevel.Value),
                  RFC7144);
-            Append_Key_Value (iSCSIProtocolLevel_Key, iSCSIProtocolLevel);
+            Append_Key_Value
+              (Encoder, iSCSIProtocolLevel_Key, iSCSIProtocolLevel);
       end case;
 
       --  ImmediateData
@@ -1628,12 +1736,12 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (ImmediateData_Key, Reject_Value);
+            Append_Key_Value (Encoder, ImmediateData_Key, Reject_Value);
 
          when Value =>
             ImmediateData :=
               Configured_ImmediateData and Decoded.ImmediateData.Value;
-            Append_Key_Value (ImmediateData_Key, ImmediateData);
+            Append_Key_Value (Encoder, ImmediateData_Key, ImmediateData);
       end case;
 
       --  InitialR2T
@@ -1643,12 +1751,12 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (InitialR2T_Key, Reject_Value);
+            Append_Key_Value (Encoder, InitialR2T_Key, Reject_Value);
 
          when Value =>
             InitialR2T :=
               Configured_InitialR2T or Decoded.InitialR2T.Value;
-            Append_Key_Value (InitialR2T_Key, InitialR2T);
+            Append_Key_Value (Encoder, InitialR2T_Key, InitialR2T);
       end case;
 
       --  MaxBurstLength
@@ -1658,7 +1766,7 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (MaxBurstLength_Key, Reject_Value);
+            Append_Key_Value (Encoder, MaxBurstLength_Key, Reject_Value);
 
          when Value =>
             MaxBurstLength :=
@@ -1666,7 +1774,7 @@ package body iSCSI.Target.Login is
                 (Configured_MaxBurstLength,
                  A0B.Types.Unsigned_24
                    (Decoded.MaxBurstLength.Value));
-            Append_Key_Value (MaxBurstLength_Key, MaxBurstLength);
+            Append_Key_Value (Encoder, MaxBurstLength_Key, MaxBurstLength);
       end case;
 
       --  DataDigest
@@ -1680,16 +1788,16 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (DataDigest_Key, Reject_Value);
+            Append_Key_Value (Encoder, DataDigest_Key, Reject_Value);
 
             --  XXX Should error be reported ???
 
          when Value =>
             if Decoded.DataDigest.Value = None_Value then
-               Append_Key_Value (DataDigest_Key, None_Value);
+               Append_Key_Value (Encoder, DataDigest_Key, None_Value);
 
             else
-               Append_Key_Value (DataDigest_Key, Reject_Value);
+               Append_Key_Value (Encoder, DataDigest_Key, Reject_Value);
             end if;
       end case;
 
@@ -1700,12 +1808,12 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (DataPDUInOrder_Key, Reject_Value);
+            Append_Key_Value (Encoder, DataPDUInOrder_Key, Reject_Value);
 
          when Value =>
             DataPDUInOrder :=
               Configured_DataPDUInOrder or Decoded.DataPDUInOrder.Value;
-            Append_Key_Value (DataPDUInOrder_Key, DataPDUInOrder);
+            Append_Key_Value (Encoder, DataPDUInOrder_Key, DataPDUInOrder);
       end case;
 
       --  DataSequenceInOrder
@@ -1715,13 +1823,14 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (DataSequenceInOrder_Key, Reject_Value);
+            Append_Key_Value (Encoder, DataSequenceInOrder_Key, Reject_Value);
 
          when Value =>
             DataSequenceInOrder :=
               Configured_DataSequenceInOrder
                 or Decoded.DataSequenceInOrder.Value;
-            Append_Key_Value (DataSequenceInOrder_Key, DataSequenceInOrder);
+            Append_Key_Value
+              (Encoder, DataSequenceInOrder_Key, DataSequenceInOrder);
       end case;
 
       --  DefaultTime2Retain
@@ -1733,14 +1842,15 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (DefaultTime2Retain_Key, Reject_Value);
+            Append_Key_Value (Encoder, DefaultTime2Retain_Key, Reject_Value);
 
          when Value =>
             DefaultTime2Retain :=
               Natural'Min
                 (Configured_DefaultTime2Retain,
                  Natural (Decoded.DefaultTime2Retain.Value));
-            Append_Key_Value (DefaultTime2Retain_Key, DefaultTime2Retain);
+            Append_Key_Value
+              (Encoder, DefaultTime2Retain_Key, DefaultTime2Retain);
       end case;
 
       --  DefaultTime2Wait
@@ -1752,14 +1862,15 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (DefaultTime2Wait_Key, Reject_Value);
+            Append_Key_Value (Encoder, DefaultTime2Wait_Key, Reject_Value);
 
          when Value =>
             DefaultTime2Wait :=
               Natural'Max
                 (Configured_DefaultTime2Wait,
                  Natural (Decoded.DefaultTime2Wait.Value));
-            Append_Key_Value (DefaultTime2Wait_Key, DefaultTime2Wait);
+            Append_Key_Value
+              (Encoder, DefaultTime2Wait_Key, DefaultTime2Wait);
       end case;
 
       --  ErrorRecoveryLevel
@@ -1769,14 +1880,15 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (ErrorRecoveryLevel_Key, Reject_Value);
+            Append_Key_Value (Encoder, ErrorRecoveryLevel_Key, Reject_Value);
 
          when Value =>
             ErrorRecoveryLevel :=
               Natural'Min
                 (Configured_ErrorRecoveryLevel,
                  Natural (Decoded.ErrorRecoveryLevel.Value));
-            Append_Key_Value (ErrorRecoveryLevel_Key, ErrorRecoveryLevel);
+            Append_Key_Value
+              (Encoder, ErrorRecoveryLevel_Key, ErrorRecoveryLevel);
       end case;
 
       --  FirstBurstLength,
@@ -1787,18 +1899,20 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (FirstBurstLength_Key, Reject_Value);
+            Append_Key_Value (Encoder, FirstBurstLength_Key, Reject_Value);
 
          when Value =>
             if InitialR2T and not ImmediateData then
-               Append_Key_Value (FirstBurstLength_Key, Irrelevant_Value);
+               Append_Key_Value
+                 (Encoder, FirstBurstLength_Key, Irrelevant_Value);
 
             else
                FirstBurstLength :=
                  A0B.Types.Unsigned_24'Min
                    (Configured_FirstBurstLength,
                     A0B.Types.Unsigned_24 (Decoded.FirstBurstLength.Value));
-               Append_Key_Value (FirstBurstLength_Key, FirstBurstLength);
+               Append_Key_Value
+                 (Encoder, FirstBurstLength_Key, FirstBurstLength);
 
                if FirstBurstLength > MaxBurstLength then
                   Set_Error_Initiator_Error;
@@ -1817,16 +1931,16 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (HeaderDigest_Key, Reject_Value);
+            Append_Key_Value (Encoder, HeaderDigest_Key, Reject_Value);
 
             --  XXX Should error be reported ???
 
          when Value =>
             if Decoded.HeaderDigest.Value = None_Value then
-               Append_Key_Value (HeaderDigest_Key, None_Value);
+               Append_Key_Value (Encoder, HeaderDigest_Key, None_Value);
 
             else
-               Append_Key_Value (HeaderDigest_Key, Reject_Value);
+               Append_Key_Value (Encoder, HeaderDigest_Key, Reject_Value);
             end if;
       end case;
 
@@ -1839,10 +1953,10 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (IFMarkInt_Key, Reject_Value);
+            Append_Key_Value (Encoder, IFMarkInt_Key, Reject_Value);
 
          when Value =>
-            Append_Key_Value (IFMarkInt_Key, Reject_Value);
+            Append_Key_Value (Encoder, IFMarkInt_Key, Reject_Value);
       end case;
 
       --  IFMarker, obsolete
@@ -1854,10 +1968,10 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (IFMarker_Key, Reject_Value);
+            Append_Key_Value (Encoder, IFMarker_Key, Reject_Value);
 
          when Value =>
-            Append_Key_Value (IFMarker_Key, Reject_Value);
+            Append_Key_Value (Encoder, IFMarker_Key, Reject_Value);
       end case;
 
       --  InitiatorAlias, Declarative, optional
@@ -1867,7 +1981,7 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (InitiatorAlias_Key, Reject_Value);
+            Append_Key_Value (Encoder, InitiatorAlias_Key, Reject_Value);
 
          when Value =>
             InitiatorAlias := Decoded.InitiatorAlias.Value;
@@ -1880,7 +1994,7 @@ package body iSCSI.Target.Login is
             Set_Error_Missing_Parameter;
 
          when Error =>
-            Append_Key_Value (InitiatorName_Key, Reject_Value);
+            Append_Key_Value (Encoder, InitiatorName_Key, Reject_Value);
 
          when Value =>
             InitiatorName := Decoded.InitiatorName.Value;
@@ -1893,14 +2007,14 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (MaxConnections_Key, Reject_Value);
+            Append_Key_Value (Encoder, MaxConnections_Key, Reject_Value);
 
          when Value =>
             MaxConnections :=
               Positive'Min
                 (Positive (Decoded.MaxConnections.Value),
                  Configured_MaxConnections);
-            Append_Key_Value (MaxConnections_Key, MaxConnections);
+            Append_Key_Value (Encoder, MaxConnections_Key, MaxConnections);
       end case;
 
       --  MaxOutstandingR2T
@@ -1910,14 +2024,15 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (MaxOutstandingR2T_Key, Reject_Value);
+            Append_Key_Value (Encoder, MaxOutstandingR2T_Key, Reject_Value);
 
          when Value =>
             MaxOutstandingR2T :=
               Natural'Min
                 (Configured_MaxOutstandingR2T,
                  Natural (Decoded.MaxOutstandingR2T.Value));
-            Append_Key_Value (MaxOutstandingR2T_Key, MaxOutstandingR2T);
+            Append_Key_Value
+              (Encoder, MaxOutstandingR2T_Key, MaxOutstandingR2T);
       end case;
 
       --  MaxRecvDataSegmentLength, Declarative
@@ -1927,7 +2042,8 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (MaxRecvDataSegmentLength_Key, Reject_Value);
+            Append_Key_Value
+              (Encoder, MaxRecvDataSegmentLength_Key, Reject_Value);
 
          when Value =>
             Initiator_MaxRecvDataSegmentLength :=
@@ -1943,10 +2059,10 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (OFMarkInt_Key, Reject_Value);
+            Append_Key_Value (Encoder, OFMarkInt_Key, Reject_Value);
 
          when Value =>
-            Append_Key_Value (OFMarkInt_Key, Reject_Value);
+            Append_Key_Value (Encoder, OFMarkInt_Key, Reject_Value);
       end case;
 
       --  OFMarker, obsolete
@@ -1958,10 +2074,10 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (OFMarker_Key, Reject_Value);
+            Append_Key_Value (Encoder, OFMarker_Key, Reject_Value);
 
          when Value =>
-            Append_Key_Value (OFMarker_Key, Reject_Value);
+            Append_Key_Value (Encoder, OFMarker_Key, Reject_Value);
       end case;
 
       --  SendTargets, irrelevant in Login Request
@@ -1971,10 +2087,10 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (SendTargets_Key, Reject_Value);
+            Append_Key_Value (Encoder, SendTargets_Key, Reject_Value);
 
          when Value =>
-            Append_Key_Value (SendTargets_Key, Irrelevant_Value);
+            Append_Key_Value (Encoder, SendTargets_Key, Irrelevant_Value);
       end case;
 
       --  TargetAddress, never send by the initiator
@@ -1984,10 +2100,10 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (TargetAddress_Key, Reject_Value);
+            Append_Key_Value (Encoder, TargetAddress_Key, Reject_Value);
 
          when Value =>
-            Append_Key_Value (TargetAddress_Key, Reject_Value);
+            Append_Key_Value (Encoder, TargetAddress_Key, Reject_Value);
       end case;
 
       --  TargetAlias, never send by the initiator
@@ -1997,10 +2113,10 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (TargetAlias_Key, Reject_Value);
+            Append_Key_Value (Encoder, TargetAlias_Key, Reject_Value);
 
          when Value =>
-            Append_Key_Value (TargetAlias_Key, Reject_Value);
+            Append_Key_Value (Encoder, TargetAlias_Key, Reject_Value);
             --  XXX Is it correct when TargetAlias is configured ???
       end case;
 
@@ -2011,7 +2127,7 @@ package body iSCSI.Target.Login is
             Set_Error_Missing_Parameter;
 
          when Error =>
-            Append_Key_Value (TargetName_Key, Reject_Value);
+            Append_Key_Value (Encoder, TargetName_Key, Reject_Value);
 
          when Value =>
             TargetName := Decoded.TargetName.Value;
@@ -2025,12 +2141,14 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (TargetPortalGroupTag_Key, Reject_Value);
+            Append_Key_Value
+              (Encoder, TargetPortalGroupTag_Key, Reject_Value);
 
             Set_Error_Initiator_Error;
 
          when Value =>
-            Append_Key_Value (TargetPortalGroupTag_Key, Reject_Value);
+            Append_Key_Value
+              (Encoder, TargetPortalGroupTag_Key, Reject_Value);
 
             Set_Error_Initiator_Error;
       end case;
@@ -2044,15 +2162,15 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (TaskReporting_Key, Reject_Value);
+            Append_Key_Value (Encoder, TaskReporting_Key, Reject_Value);
 
          when Value =>
             if Decoded.TaskReporting.Value = RFC3720_Value then
                TaskReporting := RFC3720;
-               Append_Key_Value (TaskReporting_Key, TaskReporting);
+               Append_Key_Value (Encoder, TaskReporting_Key, TaskReporting);
 
             else
-               Append_Key_Value (TaskReporting_Key, Reject_Value);
+               Append_Key_Value (Encoder, TaskReporting_Key, Reject_Value);
             end if;
       end case;
 
@@ -2063,7 +2181,7 @@ package body iSCSI.Target.Login is
             null;
 
          when Error =>
-            Append_Key_Value (X_NodeArchitecture_Key, Reject_Value);
+            Append_Key_Value (Encoder, X_NodeArchitecture_Key, Reject_Value);
 
          when Value =>
             null;
@@ -2074,7 +2192,8 @@ package body iSCSI.Target.Login is
       for Key of Decoded.NotUnderstood loop
          exit when iSCSI.Text.Is_Null (Key);
 
-         Append_Key_Value (iSCSI.Text.Text (Key), NotUnderstood_Value);
+         Append_Key_Value
+           (Encoder, iSCSI.Text.Text (Key), NotUnderstood_Value);
       end loop;
 
       --  Send some parameters
@@ -2088,17 +2207,17 @@ package body iSCSI.Target.Login is
       --  XXX Send on redirect and on `SendTargets` only
 
       if Decoded.TargetPortalGroupTag.Kind = None then
-         Append_Key_Value (TargetPortalGroupTag_Key, Natural'(1));
+         Append_Key_Value (Encoder, TargetPortalGroupTag_Key, Natural'(1));
       end if;
 
       if Decoded.MaxRecvDataSegmentLength.Kind /= Error then
          Target_MaxRecvDataSegmentLength :=
            Configured_MaxRecvDataSegmentLength;
          Append_Key_Value
-           (MaxRecvDataSegmentLength_Key, Target_MaxRecvDataSegmentLength);
+           (Encoder,
+            MaxRecvDataSegmentLength_Key,
+            Target_MaxRecvDataSegmentLength);
       end if;
-
-      raise Program_Error;
    end Validate_Normal_Session;
 
 end iSCSI.Target.Login;

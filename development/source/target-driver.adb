@@ -71,6 +71,7 @@ procedure Target.Driver is
    Data_Last      : Ada.Streams.Stream_Element_Offset;
 
    Response_Storage : Ada.Streams.Stream_Element_Array (0 .. 65_535);
+   Response_Length  : A0B.Types.Unsigned_32;
 
 begin
    GNAT.Sockets.Create_Socket (Listen_Socket);
@@ -151,7 +152,8 @@ begin
    iSCSI.Target.Login.Process
      (Header_Address        => Header_Storage'Address,
       Request_Data_Address  => Data_Storage'Address,
-      Response_Data_Address => Response_Storage'Address);
+      Response_Data_Address => Response_Storage'Address,
+      Response_Data_Length  => Response_Length);
 
    --  case Basic_Header.Opcode is
    --     when iSCSI.Types.Login_Request =>

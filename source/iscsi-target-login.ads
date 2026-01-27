@@ -157,7 +157,8 @@ package iSCSI.Target.Login is
    procedure Process
      (Header_Address        : System.Address;
       Request_Data_Address  : System.Address;
-      Response_Data_Address : System.Address);
+      Response_Data_Address : System.Address;
+      Response_Data_Length  : out A0B.Types.Unsigned_32);
 
 private
 
