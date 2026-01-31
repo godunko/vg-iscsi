@@ -22,6 +22,7 @@ procedure Target.Driver is
 
    use type Ada.Streams.Stream_Element_Offset;
    use type A0B.Types.Unsigned_8;
+   use type iSCSI.Types.Opcode_Type;
 
    function Adjusted_Size
      (Value : Ada.Streams.Stream_Element_Offset)
@@ -73,43 +74,11 @@ procedure Target.Driver is
    Response_Storage : Ada.Streams.Stream_Element_Array (0 .. 65_535);
    Response_Length  : A0B.Types.Unsigned_32;
 
-begin
-   GNAT.Sockets.Create_Socket (Listen_Socket);
+   ---------------------------
+   -- Process_Login_Request --
+   ---------------------------
 
-   GNAT.Sockets.Bind_Socket (Listen_Socket, Listen_Address);
-   GNAT.Sockets.Listen_Socket (Listen_Socket, 1);
-
-   GNAT.Sockets.Accept_Socket
-     (Server   => Listen_Socket,
-      Socket   => Accept_Socket,
-      Address  => Client_Address);
-
-   GNAT.Sockets.Receive_Socket
-     (Socket => Accept_Socket,
-      Item   => Header_Storage,
-      Last   => Last);
-
-   Put_Line (iSCSI.Types.Opcode_Type'Image (Basic_Header.Opcode));
-   Put_Line (A0B.Types.Unsigned_8'Image (Basic_Header.TotalAHSLength));
-   Put_Line (A0B.Types.Unsigned_24'Image (Basic_Header.DataSegmentLength));
-
-   if Basic_Header.TotalAHSLength /= 0 then
-      raise Program_Error;
-   end if;
-
-   GNAT.Sockets.Receive_Socket
-     (Socket => Accept_Socket,
-      Item   => Data_Storage,
-      Last   => Data_Last);
-
-   if (Data_Last + 1)
-     /= Adjusted_Size
-       (Ada.Streams.Stream_Element_Offset (Basic_Header.DataSegmentLength))
-   then
-      raise Program_Error;
-   end if;
-
-   declare
+   procedure Process_Login_Request is
       Header : iSCSI.PDUs.Login_Request_Header
         with Import, Address => Header_Storage'Address;
       Parser : iSCSI.Text.Parser;
@@ -147,51 +116,100 @@ begin
            (To_String (iSCSI.Text.Text (iSCSI.Text.Value (Parser))));
          Ada.Text_IO.Put_Line ("'");
       end loop;
-   end;
 
-   iSCSI.Target.Login.Process
-     (Header_Address        => Header_Storage'Address,
-      Request_Data_Address  => Data_Storage'Address,
-      Response_Data_Address => Response_Storage'Address,
-      Response_Data_Length  => Response_Length);
+      iSCSI.Target.Login.Process
+        (Header_Address        => Header_Storage'Address,
+         Request_Data_Address  => Data_Storage'Address,
+         Response_Data_Address => Response_Storage'Address,
+         Response_Data_Length  => Response_Length);
 
-   declare
-      Request_Header : iSCSI.PDUs.Login_Request_Header
-        with Import, Address => Header_Storage'Address;
+      declare
+         Request_Header : iSCSI.PDUs.Login_Request_Header
+           with Import, Address => Header_Storage'Address;
 
-      Header       : iSCSI.PDUs.Login_Response_Header :=
-        (Transit            => True,
-         Continue           => False,
-         CSG                => iSCSI.Types.LoginOperationalNegotiation,
-         NSG                => iSCSI.Types.FullFeaturePhase,
-         Version_Max        => 1,
-         Version_Active     => 0,
-         TotalAHSLength     => 0,
-         DataSegmentLength  => A0B.Types.Unsigned_24 (Response_Length),
-         ISID               => Request_Header.ISID,
-         TSIH               => 16#1234#,
-         Initiator_Task_Tag => Request_Header.Initiator_Task_Tag,
-         StatSN             => 0,
-         ExpCmdSN           => 0,
-         MaxCmdSN           => 0,
-         Status_Class       => 0,
-         Status_Detail      => 0,
-         others             => <>);
-      Header_Storage : Ada.Streams.Stream_Element_Array (0 .. 47)
-        with Import, Address => Header'Address;
+         Header       : iSCSI.PDUs.Login_Response_Header :=
+           (Transit            => True,
+            Continue           => False,
+            CSG                => iSCSI.Types.LoginOperationalNegotiation,
+            NSG                => iSCSI.Types.FullFeaturePhase,
+            Version_Max        => 1,
+            Version_Active     => 0,
+            TotalAHSLength     => 0,
+            DataSegmentLength  => A0B.Types.Unsigned_24 (Response_Length),
+            ISID               => Request_Header.ISID,
+            TSIH               => 16#1234#,
+            Initiator_Task_Tag => Request_Header.Initiator_Task_Tag,
+            StatSN             => 0,
+            ExpCmdSN           => 0,
+            MaxCmdSN           => 0,
+            Status_Class       => 0,
+            Status_Detail      => 0,
+            others             => <>);
+         Header_Storage : Ada.Streams.Stream_Element_Array (0 .. 47)
+           with Import, Address => Header'Address;
 
-      Data           : Ada.Streams.Stream_Element_Array
-        (0 .. Adjusted_Size (Ada.Streams.Stream_Element_Offset (Response_Length)))
-        with Import, Address => Response_Storage'Address;
+         Data           : Ada.Streams.Stream_Element_Array
+           (0 .. Adjusted_Size (Ada.Streams.Stream_Element_Offset (Response_Length)))
+           with Import, Address => Response_Storage'Address;
 
-   begin
-      GNAT.Sockets.Send_Socket
+      begin
+         GNAT.Sockets.Send_Socket
+           (Socket => Accept_Socket,
+            Item   => Header_Storage,
+            Last   => Last);
+         GNAT.Sockets.Send_Socket
+           (Socket => Accept_Socket,
+            Item   => Data,
+            Last   => Last);
+      end;
+   end Process_Login_Request;
+
+begin
+   GNAT.Sockets.Create_Socket (Listen_Socket);
+
+   GNAT.Sockets.Bind_Socket (Listen_Socket, Listen_Address);
+   GNAT.Sockets.Listen_Socket (Listen_Socket, 1);
+
+   GNAT.Sockets.Accept_Socket
+     (Server   => Listen_Socket,
+      Socket   => Accept_Socket,
+      Address  => Client_Address);
+
+   loop
+      GNAT.Sockets.Receive_Socket
         (Socket => Accept_Socket,
          Item   => Header_Storage,
          Last   => Last);
-      GNAT.Sockets.Send_Socket
+
+      Put_Line (iSCSI.Types.Opcode_Type'Image (Basic_Header.Opcode));
+      Put_Line (A0B.Types.Unsigned_8'Image (Basic_Header.TotalAHSLength));
+      Put_Line (A0B.Types.Unsigned_24'Image (Basic_Header.DataSegmentLength));
+
+      if Basic_Header.TotalAHSLength /= 0 then
+         raise Program_Error;
+      end if;
+
+      GNAT.Sockets.Receive_Socket
         (Socket => Accept_Socket,
-         Item   => Data,
-         Last   => Last);
-   end;
+         Item   => Data_Storage,
+         Last   => Data_Last);
+
+      if (Data_Last + 1)
+        /= Adjusted_Size
+            (Ada.Streams.Stream_Element_Offset (Basic_Header.DataSegmentLength))
+      then
+         raise Program_Error;
+      end if;
+
+      if Basic_Header.Opcode = iSCSI.Types.Login_Request then
+         Process_Login_Request;
+            null;
+
+      elsif Basic_Header.Opcode = iSCSI.Types.Text_Request then
+         raise Program_Error;
+
+      else
+         raise Program_Error;
+      end if;
+   end loop;
 end Target.Driver;
