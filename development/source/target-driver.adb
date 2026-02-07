@@ -11,17 +11,21 @@ with Ada.Text_IO; use Ada.Text_IO;
 with GNAT.Sockets;
 with System.Storage_Elements;
 
-with A0B.Types;
+with A0B.Types.Arrays;
 
 with iSCSI.PDUs;
 with iSCSI.Target.Login;
 with iSCSI.Text;
 with iSCSI.Types;
 
+with Target.Handler;
+
 procedure Target.Driver is
 
    use type Ada.Streams.Stream_Element_Offset;
    use type A0B.Types.Unsigned_8;
+   use type A0B.Types.Unsigned_24;
+   use type A0B.Types.Unsigned_32;
    use type iSCSI.Types.Opcode_Type;
 
    function Adjusted_Size
@@ -73,6 +77,8 @@ procedure Target.Driver is
 
    Response_Storage : Ada.Streams.Stream_Element_Array (0 .. 65_535);
    Response_Length  : A0B.Types.Unsigned_32;
+
+   --  DataSN           : A0B.Types.Unsigned_32 := 0;
 
    ---------------------------
    -- Process_Login_Request --
@@ -149,7 +155,7 @@ procedure Target.Driver is
            with Import, Address => Header'Address;
 
          Data           : Ada.Streams.Stream_Element_Array
-           (0 .. Adjusted_Size (Ada.Streams.Stream_Element_Offset (Response_Length)))
+           (0 .. Adjusted_Size (Ada.Streams.Stream_Element_Offset (Response_Length)) - 1)
            with Import, Address => Response_Storage'Address;
 
       begin
@@ -164,8 +170,133 @@ procedure Target.Driver is
       end;
    end Process_Login_Request;
 
+   --------------------------
+   -- Process_SCSI_Command --
+   --------------------------
+
+   procedure Process_SCSI_Command is
+      Header : iSCSI.PDUs.SCSI_Command_Header
+        with Import, Address => Header_Storage'Address;
+
+   begin
+      Put_Line ("iSCSI Immediate: " & Header.Immediate'Image);
+      Put_Line ("iSCSI Final: " & Header.Final'Image);
+      Put_Line ("iSCSI Read: " & Header.Read'Image);
+      Put_Line ("iSCSI Write: " & Header.Write'Image);
+      Put_Line ("iSCSI Attr: " & Header.Attr'Image);
+      Put_Line ("iSCSI LUN: " & Header.Logical_Unit_Number'Image);
+      Put_Line ("iSCSI Initiator Task Tag" & Header.Initiator_Task_Tag'Image);
+      Put_Line ("iSCSI Expected Data Transfer Length" & Header.Expected_Data_Transfer_Length'Image);
+      Put_Line ("iSCSI CmdSN" & Header.CmdSN'Image);
+      Put_Line ("iSCSI ExpStatSN" & Header.ExpStatSN'Image);
+      Put_Line ("iSCSI CDB " & Header.SCSI_Command_Descriptor_Block'Image);
+
+      Target.Handler.Process_Command
+        (A0B.Types.Arrays.Unsigned_8_Array
+           (Header.SCSI_Command_Descriptor_Block));
+
+      Target.Handler.Data_In (Response_Storage'Address, Response_Length);
+
+      declare
+         Request_Header : iSCSI.PDUs.Login_Request_Header
+           with Import, Address => Header_Storage'Address;
+
+         Header       : iSCSI.PDUs.SCSI_Data_In_Header :=
+           (Opcode              => <>,
+            Final               => True,
+            Acknowledge         => False,
+            Residual_Overflow   => False,
+            Residual_Underflow  => False,
+            Status_Flag         => False,
+            Status              => <>,
+            TotalAHSLength      => 0,
+            DataSegmentLength   => A0B.Types.Unsigned_24 (Response_Length),
+            Logical_Unit_Number => 0,
+            Initiator_Task_Tag  => Request_Header.Initiator_Task_Tag,
+            Target_Transfer_Tag => 0,
+            StatSN              => 0,
+            ExpCmdSN            => 0,
+            MaxCmdSN            => 0,
+            DataSN              => 0,  --  DataSN,
+            Buffer_Offset       => 0,
+            Residual_Count      => 0,
+            others              => <>);
+         Header_Storage : Ada.Streams.Stream_Element_Array (0 .. 47)
+           with Import, Address => Header'Address;
+
+         Data           : Ada.Streams.Stream_Element_Array
+          (0 .. Adjusted_Size (Ada.Streams.Stream_Element_Offset (Response_Length)) - 1)
+             with Import, Address => Response_Storage'Address;
+
+      begin
+         --  DataSN := @ + 1;
+
+         Put_Line ("Send Data-In ...");
+         GNAT.Sockets.Send_Socket
+           (Socket => Accept_Socket,
+            Item   => Header_Storage,
+            Last   => Last);
+         Put_Line (Last'Image);
+         GNAT.Sockets.Send_Socket
+           (Socket => Accept_Socket,
+            Item   => Data,
+            Last   => Last);
+         Put_Line (Last'Image);
+         Put_Line ("  ... done.");
+      end;
+
+      declare
+         Request_Header : iSCSI.PDUs.Login_Request_Header
+           with Import, Address => Header_Storage'Address;
+
+         Header       : iSCSI.PDUs.SCSI_Response_Header :=
+           (Opcode                                => <>,
+            Bidirectional_Read_Residual_Overflow  => False,
+            Bidirectional_Read_Residual_Underflow => False,
+            Residual_Overflow                     => False,
+            Residual_Underflow                    => False,
+            Response                              => 0,
+            Status                                => 0,
+            TotalAHSLength                        => 0,
+            DataSegmentLength                     => 0,
+            Initiator_Task_Tag                    => Request_Header.Initiator_Task_Tag,
+            SNACK_Tag                             => 0,
+            StatSN                                => 0,
+            ExpCmdSN                              => 0,
+            MaxCmdSN                              => 0,
+            ExpDataSN                             => 0,
+            Bidirectional_Read_Residual_Count     => 0,
+            Residual_Count                        => 0,
+            others                                => <>);
+         Header_Storage : Ada.Streams.Stream_Element_Array (0 .. 47)
+           with Import, Address => Header'Address;
+
+         --  Data           : Ada.Streams.Stream_Element_Array
+         --   (0 .. Adjusted_Size (Ada.Streams.Stream_Element_Offset (Response_Length)) - 1)
+         --      with Import, Address => Response_Storage'Address;
+
+      begin
+         Put_Line ("Send SCSI Response ...");
+         GNAT.Sockets.Send_Socket
+           (Socket => Accept_Socket,
+            Item   => Header_Storage,
+            Last   => Last);
+         Put_Line (Last'Image);
+         --  GNAT.Sockets.Send_Socket
+         --    (Socket => Accept_Socket,
+         --     Item   => Data,
+         --     Last   => Last);
+         --  Put_Line (Last'Image);
+         Put_Line ("  ... done.");
+      end;
+   end Process_SCSI_Command;
+
 begin
    GNAT.Sockets.Create_Socket (Listen_Socket);
+   GNAT.Sockets.Set_Socket_Option
+     (Listen_Socket,
+      GNAT.Sockets.IP_Protocol_For_IP_Level,
+      (GNAT.Sockets.Reuse_Address, True));
 
    GNAT.Sockets.Bind_Socket (Listen_Socket, Listen_Address);
    GNAT.Sockets.Listen_Socket (Listen_Socket, 1);
@@ -174,6 +305,7 @@ begin
      (Server   => Listen_Socket,
       Socket   => Accept_Socket,
       Address  => Client_Address);
+   GNAT.Sockets.Close_Socket (Listen_Socket);
 
    loop
       GNAT.Sockets.Receive_Socket
@@ -181,29 +313,44 @@ begin
          Item   => Header_Storage,
          Last   => Last);
 
-      Put_Line (iSCSI.Types.Opcode_Type'Image (Basic_Header.Opcode));
-      Put_Line (A0B.Types.Unsigned_8'Image (Basic_Header.TotalAHSLength));
-      Put_Line (A0B.Types.Unsigned_24'Image (Basic_Header.DataSegmentLength));
+      if Last /= Header_Storage'Last then
+         raise Program_Error;
+      end if;
+
+      Put_Line ("---------------------------------------------------------");
+      Put_Line
+        ("iSCSI OpCode " & iSCSI.Types.Opcode_Type'Image (Basic_Header.Opcode));
+      Put_Line
+        ("iSCSI AHSLen "
+         & A0B.Types.Unsigned_8'Image (Basic_Header.TotalAHSLength));
+      Put_Line
+        ("iSCSI DSLen  "
+         & A0B.Types.Unsigned_24'Image (Basic_Header.DataSegmentLength));
 
       if Basic_Header.TotalAHSLength /= 0 then
          raise Program_Error;
       end if;
 
-      GNAT.Sockets.Receive_Socket
-        (Socket => Accept_Socket,
-         Item   => Data_Storage,
-         Last   => Data_Last);
+      if Basic_Header.DataSegmentLength /= 0 then
+         GNAT.Sockets.Receive_Socket
+           (Socket => Accept_Socket,
+            Item   => Data_Storage,
+            Last   => Data_Last);
 
-      if (Data_Last + 1)
-        /= Adjusted_Size
-            (Ada.Streams.Stream_Element_Offset (Basic_Header.DataSegmentLength))
-      then
-         raise Program_Error;
+         if (Data_Last + 1)
+           /= Adjusted_Size
+               (Ada.Streams.Stream_Element_Offset
+                 (Basic_Header.DataSegmentLength))
+         then
+            raise Program_Error;
+         end if;
       end if;
 
-      if Basic_Header.Opcode = iSCSI.Types.Login_Request then
+      if Basic_Header.Opcode = iSCSI.Types.SCSI_Command then
+         Process_SCSI_Command;
+
+      elsif Basic_Header.Opcode = iSCSI.Types.Login_Request then
          Process_Login_Request;
-            null;
 
       elsif Basic_Header.Opcode = iSCSI.Types.Text_Request then
          raise Program_Error;
