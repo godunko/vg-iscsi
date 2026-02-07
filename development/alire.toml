@@ -19,3 +19,4 @@ vg_iscsi = "*"
 
 [[pins]]
 vg_iscsi = { path='..' }
+vg_scsi = { path='../../vg-scsi' }
