@@ -272,4 +272,78 @@ package iSCSI.PDUs with Pure is
       Residual_Count      at 44 range 0 .. 31;
    end record;
 
+   ---------------------
+   --  SCSI Response  --
+   ---------------------
+
+   type SCSI_Response_Header is record
+      Reserved_0_0_0      : A0B.Types.Reserved_1    := A0B.Types.Zero;
+      Reserved_0_1_1      : A0B.Types.Reserved_1    := A0B.Types.Zero;
+      Opcode              : iSCSI.Types.Opcode_Type :=
+        iSCSI.Types.SCSI_Response;
+      One_1_0_0           : Boolean                 := True;
+      Reserved_1_1_2      : A0B.Types.Reserved_2    := A0B.Types.Zero;
+      Bidirectional_Read_Residual_Overflow  : Boolean;
+      Bidirectional_Read_Residual_Underflow : Boolean;
+      Residual_Overflow   : Boolean;
+      Residual_Underflow  : Boolean;
+      Reserved_1_7_7      : A0B.Types.Reserved_1    := A0B.Types.Zero;
+      Response            : A0B.Types.Unsigned_8;
+      Status              : SCSI.SAM5.STATUS;
+      TotalAHSLength      : A0B.Types.Unsigned_8;
+      DataSegmentLength   : A0B.Types.Unsigned_24;
+      Reserved_8          : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_9          : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_10         : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_11         : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_12         : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_13         : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_14         : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_15         : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Initiator_Task_Tag  : A0B.Types.Unsigned_32;
+      SNACK_Tag           : A0B.Types.Unsigned_32;
+      StatSN              : A0B.Types.Unsigned_32;
+      ExpCmdSN            : A0B.Types.Unsigned_32;
+      MaxCmdSN            : A0B.Types.Unsigned_32;
+      ExpDataSN           : A0B.Types.Unsigned_32;
+      Bidirectional_Read_Residual_Count : A0B.Types.Unsigned_32;
+      Residual_Count      : A0B.Types.Unsigned_32;
+   end record
+     with Size                 => Basic_Header_Segment_Length * Byte_Size,
+          Bit_Order            => System.High_Order_First,
+          Scalar_Storage_Order => System.High_Order_First;
+
+   for SCSI_Response_Header use record
+      Reserved_0_0_0      at 0 range 0 .. 0;
+      Reserved_0_1_1      at 0 range 1 .. 1;
+      Opcode              at 0 range 2 .. 7;
+      One_1_0_0           at 1 range 0 .. 0;
+      Reserved_1_1_2      at 1 range 1 .. 2;
+      Bidirectional_Read_Residual_Overflow at 1 range 3 .. 3;
+      Bidirectional_Read_Residual_Underflow at 1 range 4 .. 4;
+      Residual_Overflow   at 1 range 5 .. 5;
+      Residual_Underflow  at 1 range 6 .. 6;
+      Reserved_1_7_7      at 1 range 7 .. 7;
+      Response            at 2 range 0 .. 7;
+      Status              at 3 range 0 .. 7;
+      TotalAHSLength      at 4 range 0 .. 7;
+      DataSegmentLength   at 5 range 0 .. 23;
+      Reserved_8          at 8 range 0 .. 7;
+      Reserved_9          at 9 range 0 .. 7;
+      Reserved_10         at 10 range 0 .. 7;
+      Reserved_11         at 11 range 0 .. 7;
+      Reserved_12         at 12 range 0 .. 7;
+      Reserved_13         at 13 range 0 .. 7;
+      Reserved_14         at 14 range 0 .. 7;
+      Reserved_15         at 15 range 0 .. 7;
+      Initiator_Task_Tag  at 16 range 0 .. 31;
+      SNACK_Tag           at 20 range 0 .. 31;
+      StatSN              at 24 range 0 .. 31;
+      ExpCmdSN            at 28 range 0 .. 31;
+      MaxCmdSN            at 32 range 0 .. 31;
+      ExpDataSN           at 36 range 0 .. 31;
+      Bidirectional_Read_Residual_Count at 40 range 0 .. 31;
+      Residual_Count      at 44 range 0 .. 31;
+   end record;
+
 end iSCSI.PDUs;
