@@ -6,6 +6,7 @@
 
 --  PDUs defined by [RFC7143]
 
+with A0B.Types.Arrays;
 with System;
 
 with A0B.Types;
@@ -37,6 +38,10 @@ package iSCSI.PDUs with Pure is
       DataSegmentLength  at 5 range 0 .. 23;
       Initiator_Task_Tag at 16 range 0 .. 31;
    end record;
+
+   --------------------------------------
+   --  Login Request / Login Response  --
+   --------------------------------------
 
    type Login_Request_Header is record
       Immediate          : Boolean                 := True;
@@ -154,6 +159,59 @@ package iSCSI.PDUs with Pure is
       Reserved_45        at 45 range 0 .. 7;
       Reserved_46        at 46 range 0 .. 7;
       Reserved_47        at 47 range 0 .. 7;
+   end record;
+
+   --------------------
+   --  SCSI Command  --
+   --------------------
+
+   type SCSI_Command_Descriptor_Block is
+     new A0B.Types.Arrays.Unsigned_8_Array (0 .. 15);
+
+   type SCSI_Command_Header is record
+      Reserved_0_0_0                : A0B.Types.Reserved_1    := A0B.Types.Zero;
+      Immediate                     : Boolean;
+      Opcode                        : iSCSI.Types.Opcode_Type :=
+        iSCSI.Types.SCSI_Command;
+      Final                         : Boolean;
+      Read                          : Boolean;
+      Write                         : Boolean;
+      Reserved_1_3_4                : A0B.Types.Reserved_2    := A0B.Types.Zero;
+      Attr                          : A0B.Types.Unsigned_3;
+      Reserved_2                    : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_3                    : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      TotalAHSLength                : A0B.Types.Unsigned_8;
+      DataSegmentLength             : A0B.Types.Unsigned_24;
+      Logical_Unit_Number           : A0B.Types.Unsigned_64;
+      Initiator_Task_Tag            : A0B.Types.Unsigned_32;
+      Expected_Data_Transfer_Length : A0B.Types.Unsigned_32;
+      CmdSN                         : A0B.Types.Unsigned_32;
+      ExpStatSN                     : A0B.Types.Unsigned_32;
+      SCSI_Command_Descriptor_Block : iSCSI.PDUs.SCSI_Command_Descriptor_Block;
+   end record
+     with Size                 => Basic_Header_Segment_Length * Byte_Size,
+          Bit_Order            => System.High_Order_First,
+          Scalar_Storage_Order => System.High_Order_First;
+
+   for SCSI_Command_Header use record
+      Reserved_0_0_0                at 0 range 0 .. 0;
+      Immediate                     at 0 range 1 .. 1;
+      Opcode                        at 0 range 2 .. 7;
+      Final                         at 1 range 0 .. 0;
+      Read                          at 1 range 1 .. 1;
+      Write                         at 1 range 2 .. 2;
+      Reserved_1_3_4                at 1 range 3 .. 4;
+      Attr                          at 1 range 5 .. 7;
+      Reserved_2                    at 2 range 0 .. 7;
+      Reserved_3                    at 3 range 0 .. 7;
+      TotalAHSLength                at 4 range 0 .. 7;
+      DataSegmentLength             at 5 range 0 .. 23;
+      Logical_Unit_Number           at 8 range 0 .. 63;
+      Initiator_Task_Tag            at 16 range 0 .. 31;
+      Expected_Data_Transfer_Length at 20 range 0 .. 31;
+      CmdSN                         at 24 range 0 .. 31;
+      ExpStatSN                     at 28 range 0 .. 31;
+      SCSI_Command_Descriptor_Block at 32 range 0 .. 127;
    end record;
 
 end iSCSI.PDUs;
