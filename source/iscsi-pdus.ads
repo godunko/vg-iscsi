@@ -6,10 +6,11 @@
 
 --  PDUs defined by [RFC7143]
 
-with A0B.Types.Arrays;
 with System;
 
-with A0B.Types;
+with A0B.Types.Arrays;
+
+with SCSI.SAM5;
 
 with iSCSI.Types;
 
@@ -212,6 +213,63 @@ package iSCSI.PDUs with Pure is
       CmdSN                         at 24 range 0 .. 31;
       ExpStatSN                     at 28 range 0 .. 31;
       SCSI_Command_Descriptor_Block at 32 range 0 .. 127;
+   end record;
+
+   --------------------
+   --  SCSI Data-In  --
+   --------------------
+
+   type SCSI_Data_In_Header is record
+      Reserved_0_0_0      : A0B.Types.Reserved_1    := A0B.Types.Zero;
+      Reserved_0_1_1      : A0B.Types.Reserved_1    := A0B.Types.Zero;
+      Opcode              : iSCSI.Types.Opcode_Type := iSCSI.Types.SCSI_Data_In;
+      Final               : Boolean;
+      Acknowledge         : Boolean;
+      Residual_Overflow   : Boolean;
+      Residual_Underflow  : Boolean;
+      Status_Flag         : Boolean;
+      Reserved_1_2_4      : A0B.Types.Reserved_3    := A0B.Types.Zero;
+      Reserved_2          : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Status              : SCSI.SAM5.STATUS;
+      TotalAHSLength      : A0B.Types.Unsigned_8;
+      DataSegmentLength   : A0B.Types.Unsigned_24;
+      Logical_Unit_Number : A0B.Types.Unsigned_64;
+      Initiator_Task_Tag  : A0B.Types.Unsigned_32;
+      Target_Transfer_Tag : A0B.Types.Unsigned_32;
+      StatSN              : A0B.Types.Unsigned_32;
+      ExpCmdSN            : A0B.Types.Unsigned_32;
+      MaxCmdSN            : A0B.Types.Unsigned_32;
+      DataSN              : A0B.Types.Unsigned_32;
+      Buffer_Offset       : A0B.Types.Unsigned_32;
+      Residual_Count      : A0B.Types.Unsigned_32;
+   end record
+     with Size                 => Basic_Header_Segment_Length * Byte_Size,
+          Bit_Order            => System.High_Order_First,
+          Scalar_Storage_Order => System.High_Order_First;
+
+   for SCSI_Data_In_Header use record
+      Reserved_0_0_0      at 0 range 0 .. 0;
+      Reserved_0_1_1      at 0 range 1 .. 1;
+      Opcode              at 0 range 2 .. 7;
+      Final               at 1 range 0 .. 0;
+      Acknowledge         at 1 range 1 .. 1;
+      Reserved_1_2_4      at 1 range 2 .. 4;
+      Residual_Overflow   at 1 range 5 .. 5;
+      Residual_Underflow  at 1 range 6 .. 6;
+      Status_Flag         at 1 range 7 .. 7;
+      Reserved_2          at 2 range 0 .. 7;
+      Status              at 3 range 0 .. 7;
+      TotalAHSLength      at 4 range 0 .. 7;
+      DataSegmentLength   at 5 range 0 .. 23;
+      Logical_Unit_Number at 8 range 0 .. 63;
+      Initiator_Task_Tag  at 16 range 0 .. 31;
+      Target_Transfer_Tag at 20 range 0 .. 31;
+      StatSN              at 24 range 0 .. 31;
+      ExpCmdSN            at 28 range 0 .. 31;
+      MaxCmdSN            at 32 range 0 .. 31;
+      DataSN              at 36 range 0 .. 31;
+      Buffer_Offset       at 40 range 0 .. 31;
+      Residual_Count      at 44 range 0 .. 31;
    end record;
 
 end iSCSI.PDUs;
