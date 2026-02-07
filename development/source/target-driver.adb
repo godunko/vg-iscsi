@@ -295,7 +295,7 @@ begin
    GNAT.Sockets.Create_Socket (Listen_Socket);
    GNAT.Sockets.Set_Socket_Option
      (Listen_Socket,
-      GNAT.Sockets.IP_Protocol_For_IP_Level,
+      GNAT.Sockets.Socket_Level,
       (GNAT.Sockets.Reuse_Address, True));
 
    GNAT.Sockets.Bind_Socket (Listen_Socket, Listen_Address);
