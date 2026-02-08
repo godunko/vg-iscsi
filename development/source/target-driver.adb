@@ -189,6 +189,9 @@ procedure Target.Driver is
       Request_Header : iSCSI.PDUs.SCSI_Command_Header
         with Import, Address => Header_Storage'Address;
 
+      Command_Initiator_Task_Tag            : A0B.Types.Unsigned_32;
+      Command_Expected_Data_Transfer_Length : A0B.Types.Unsigned_32;
+
    begin
       Put_Line ("iSCSI Immediate: " & Request_Header.Immediate'Image);
       Put_Line ("iSCSI Final: " & Request_Header.Final'Image);
@@ -201,6 +204,10 @@ procedure Target.Driver is
       Put_Line ("iSCSI CmdSN" & Request_Header.CmdSN'Image);
       Put_Line ("iSCSI ExpStatSN" & Request_Header.ExpStatSN'Image);
       Put_Line ("iSCSI CDB " & Request_Header.SCSI_Command_Descriptor_Block'Image);
+
+      Command_Initiator_Task_Tag := Request_Header.Initiator_Task_Tag;
+      Command_Expected_Data_Transfer_Length :=
+        Request_Header.Expected_Data_Transfer_Length;
 
       Target.Handler.Process_Command
         (A0B.Types.Arrays.Unsigned_8_Array
@@ -216,19 +223,19 @@ procedure Target.Driver is
                Acknowledge         => False,
                Residual_Overflow   => False,
                Residual_Underflow  => False,
-               Status_Flag         => False,
-               Status              => <>,
+               Status_Flag         => False,  --  Send in SCSI Response
+               Status              => <>,     --  Send in SCSI Response
                TotalAHSLength      => 0,
                DataSegmentLength   => A0B.Types.Unsigned_24 (Response_Length),
                Logical_Unit_Number => 0,
-               Initiator_Task_Tag  => Request_Header.Initiator_Task_Tag,
+               Initiator_Task_Tag  => Command_Initiator_Task_Tag,
                Target_Transfer_Tag => 0,
                StatSN              => Connection_StatSN,
                ExpCmdSN            => Session_ExpCmdSN,
                MaxCmdSN            => Session_MaxCmdSN,
                DataSN              => 0,  --  DataSN,
                Buffer_Offset       => 0,
-               Residual_Count      => 0,
+               Residual_Count      => 0,  --  Send in SCSI Response
                others              => <>);
             Header_Storage : Ada.Streams.Stream_Element_Array (0 .. 47)
               with Import, Address => Header'Address;
@@ -253,6 +260,9 @@ procedure Target.Driver is
             Put_Line (Last'Image);
             Put_Line ("  ... done.");
          end;
+
+      else
+         Response_Length := 0;
       end if;
 
       if not Request_Header.Immediate then
@@ -262,27 +272,26 @@ procedure Target.Driver is
       end if;
 
       declare
-         Request_Header : iSCSI.PDUs.Login_Request_Header
-           with Import, Address => Header_Storage'Address;
-
          Header       : iSCSI.PDUs.SCSI_Response_Header :=
            (Opcode                                => <>,
             Bidirectional_Read_Residual_Overflow  => False,
             Bidirectional_Read_Residual_Underflow => False,
             Residual_Overflow                     => False,
-            Residual_Underflow                    => False,
+            Residual_Underflow                    =>
+              Command_Expected_Data_Transfer_Length > Response_Length,
             Response                              => 0,
             Status                                => 0,
             TotalAHSLength                        => 0,
             DataSegmentLength                     => 0,
-            Initiator_Task_Tag                    => Request_Header.Initiator_Task_Tag,
+            Initiator_Task_Tag                    => Command_Initiator_Task_Tag,
             SNACK_Tag                             => 0,
             StatSN                                => Connection_StatSN,
             ExpCmdSN                              => Session_ExpCmdSN,
             MaxCmdSN                              => Session_MaxCmdSN,
             ExpDataSN                             => 0,
             Bidirectional_Read_Residual_Count     => 0,
-            Residual_Count                        => 0,
+            Residual_Count                        =>
+              Command_Expected_Data_Transfer_Length - Response_Length,
             others                                => <>);
          Header_Storage : Ada.Streams.Stream_Element_Array (0 .. 47)
            with Import, Address => Header'Address;
