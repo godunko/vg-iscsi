@@ -4,12 +4,17 @@
 --  SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 --
 
+pragma Ada_2022;
+
+with System.Storage_Elements;
+
 with Ada.Text_IO; use Ada.Text_IO;
 
 with SCSI.Commands.SPC;
 with SCSI.SAM5;
 with SCSI.SPC5.CDB;
 with SCSI.SPC5.Data;
+with SCSI.SPC5.VPD;
 
 package body Target.Handler is
 
@@ -23,6 +28,16 @@ package body Target.Handler is
 
    procedure Execute_INQUIRY
      (Descriptor : SCSI.Commands.SPC.INQUIRY_Command_Descriptor);
+
+   procedure Encode_Supported_VPD_Pages
+     (Allocation_Length : A0B.Types.Unsigned_32;
+      Storage_Address   : System.Address;
+      Data_Length       : out A0B.Types.Unsigned_32);
+
+   procedure Encode_Standard_INQUIRY_Data
+     (Allocation_Length : A0B.Types.Unsigned_32;
+      Storage_Address   : System.Address;
+      Data_Length       : out A0B.Types.Unsigned_32);
 
    type Operation_Kind is (None, Inquiry);
 
@@ -38,67 +53,47 @@ package body Target.Handler is
 
    Operation : Operation_Information;
 
+   type VPD_Builder is access procedure
+     (Allocation_Length : A0B.Types.Unsigned_32;
+      Storage_Address   : System.Address;
+      Data_Length       : out A0B.Types.Unsigned_32);
+
+   VPD : constant array (SCSI.SPC5.VPD_Page_Code) of VPD_Builder :=
+     [SCSI.SPC5.Supported_VPD_Pages_VPD_Page_Code =>
+        Encode_Supported_VPD_Pages'Access,
+      others => null];
+
+   Maximum_VPD : constant := 32;
+
    -------------
    -- Data_In --
    -------------
 
    procedure Data_In
      (Storage_Address : System.Address;
-      Data_Length     : out A0B.Types.Unsigned_32)
-   is
+      Data_Length     : out A0B.Types.Unsigned_32) is
    begin
+      Put_Line (">>> Data-In <<<");
+      Put_Line (Operation'Image);
+      Put_Line ("===============");
+
       case Operation.Kind is
          when None =>
             raise Program_Error;
 
          when Inquiry =>
-            declare
-               SAM5        : constant := 16#00A0#;
-               SBC4        : constant := 16#0600#;
-               SPC5        : constant := 16#05C0#;
-               USB_MSC_BOT : constant := 16#1730#;
+            if Operation.Inquiry.EVPD then
+               VPD (Operation.Inquiry.PAGE_CODE)
+                 (Allocation_Length => Operation.Inquiry.ALLOCATION_LENGTH,
+                  Storage_Address   => Storage_Address,
+                  Data_Length       => Data_Length);
 
-               Data : SCSI.SPC5.Data.INQUIRY_Data
-                 with Import, Address => Storage_Address;
-
-            begin
-               Data :=
-                 (PERIPHERAL_QUALIFIER      => 0,
-                  PERIPHERAL_DEVICE_TYPE    => 0,
-                  RMB                       => True,
-                  LU_CONG                   => False,
-                  VERSION                   => 16#07#,
-                  NORMACA                   => False,
-                  HISUP                     => False,
-                  RESPONSE_DATA_FORMAT      => 16#02#,
-                  ADDITIONAL_LENGTH         => <>,
-                  SCCS                      => False,
-                  TPGS                      => 0,
-                  T3PC                      => False,
-                  PROTECT                   => False,
-                  ENCSERV                   => False,
-                  VS_6_5_5                  => False,
-                  MULTIP                    => False,
-                  CMDQUE                    => False,
-                  VS_7_0_0                  => False,
-                  T10_VENDOR_IDENTIFICATION => "VG      ",
-                  PRODUCT_IDENTIFICATION    => "CNC.Net         ",
-                  PRODUCT_REVISION_LEVEL    => "0.01",
-                  VERSION_DESCRIPTOR_1      => (Value => SAM5),
-                  VERSION_DESCRIPTOR_2      => (Value => 0),
-                  VERSION_DESCRIPTOR_3      => (Value => USB_MSC_BOT),
-                  VERSION_DESCRIPTOR_4      => (Value => SPC5),
-                  VERSION_DESCRIPTOR_5      => (Value => SBC4),
-                  VERSION_DESCRIPTOR_6      => (Value => 0),
-                  VERSION_DESCRIPTOR_7      => (Value => 0),
-                  VERSION_DESCRIPTOR_8      => (Value => 0),
-                  others                    => <>);
-
-               Data_Length :=
-                 A0B.Types.Unsigned_32'Min
-                   (Operation.Inquiry.ALLOCATION_LENGTH,
-                    SCSI.SPC5.Data.INQUIRY_Data_Length);
-            end;
+            else
+               Encode_Standard_INQUIRY_Data
+                 (Allocation_Length => Operation.Inquiry.ALLOCATION_LENGTH,
+                  Storage_Address   => Storage_Address,
+                  Data_Length       => Data_Length);
+            end if;
       end case;
    end Data_In;
 
@@ -113,7 +108,7 @@ package body Target.Handler is
    is
       use type A0B.Types.Reserved_1;
       use type A0B.Types.Reserved_6;
-      use type A0B.Types.Unsigned_8;
+      use type SCSI.SPC5.VPD_Page_Code;
 
    begin
       case Length_Check is
@@ -182,6 +177,109 @@ package body Target.Handler is
       return True;
    end Decode_INQUIRY;
 
+   ----------------------------------
+   -- Encode_Standard_INQUIRY_Data --
+   ----------------------------------
+
+   procedure Encode_Standard_INQUIRY_Data
+     (Allocation_Length : A0B.Types.Unsigned_32;
+      Storage_Address   : System.Address;
+      Data_Length       : out A0B.Types.Unsigned_32)
+   is
+      SAM5        : constant := 16#00A0#;
+      SBC4        : constant := 16#0600#;
+      SPC5        : constant := 16#05C0#;
+      USB_MSC_BOT : constant := 16#1730#;
+
+      Data : SCSI.SPC5.Data.INQUIRY_Data
+        with Import, Address => Storage_Address;
+
+   begin
+      Data :=
+        (PERIPHERAL_QUALIFIER      => 0,
+         PERIPHERAL_DEVICE_TYPE    => 0,
+         RMB                       => True,
+         LU_CONG                   => False,
+         VERSION                   => 16#07#,
+         NORMACA                   => False,
+         HISUP                     => False,
+         RESPONSE_DATA_FORMAT      => 16#02#,
+         ADDITIONAL_LENGTH         => <>,
+         SCCS                      => False,
+         TPGS                      => 0,
+         T3PC                      => False,
+         PROTECT                   => False,
+         ENCSERV                   => False,
+         VS_6_5_5                  => False,
+         MULTIP                    => False,
+         CMDQUE                    => False,
+         VS_7_0_0                  => False,
+         T10_VENDOR_IDENTIFICATION => "VG      ",
+         PRODUCT_IDENTIFICATION    => "CNC.Net         ",
+         PRODUCT_REVISION_LEVEL    => "0.01",
+         VERSION_DESCRIPTOR_1      => (Value => SAM5),
+         VERSION_DESCRIPTOR_2      => (Value => 0),
+         VERSION_DESCRIPTOR_3      => (Value => USB_MSC_BOT),
+         VERSION_DESCRIPTOR_4      => (Value => SPC5),
+         VERSION_DESCRIPTOR_5      => (Value => SBC4),
+         VERSION_DESCRIPTOR_6      => (Value => 0),
+         VERSION_DESCRIPTOR_7      => (Value => 0),
+         VERSION_DESCRIPTOR_8      => (Value => 0),
+         others                    => <>);
+
+      Data_Length :=
+        A0B.Types.Unsigned_32'Min
+          (Allocation_Length,
+           SCSI.SPC5.Data.INQUIRY_Data_Length);
+   end Encode_Standard_INQUIRY_Data;
+
+   --------------------------------
+   -- Encode_Supported_VPD_Pages --
+   --------------------------------
+
+   procedure Encode_Supported_VPD_Pages
+     (Allocation_Length : A0B.Types.Unsigned_32;
+      Storage_Address   : System.Address;
+      Data_Length       : out A0B.Types.Unsigned_32)
+   is
+      use type A0B.Types.Unsigned_8;
+      use type A0B.Types.Unsigned_32;
+      pragma Warnings (Off, "use clause for type ""*"" has no effect");
+      --  XXX FSF GCC 15
+      use type System.Storage_Elements.Storage_Offset;
+      pragma Warnings (On, "use clause for type ""*"" has no effect");
+
+      Header : SCSI.SPC5.VPD.VPD_Page_Header
+        with Import, Address => Storage_Address;
+      Pages  : array (A0B.Types.Unsigned_8 range 0 .. Maximum_VPD - 1)
+        of SCSI.SPC5.VPD_Page_Code
+          with Import,
+               Address =>
+                 Storage_Address + SCSI.SPC5.VPD.VPD_Page_Header_Length;
+      Count  : A0B.Types.Unsigned_8 := 0;
+
+   begin
+      for J in VPD'Range loop
+         if VPD (J) /= null then
+            Pages (Count) := J;
+            Count := @ + 1;
+         end if;
+      end loop;
+
+      Header :=
+        (PERIPHERAL_QUALIFIER   => 0,
+         PERIPHERAL_DEVICE_TYPE => 0,
+         PAGE_CODE              =>
+           SCSI.SPC5.Supported_VPD_Pages_VPD_Page_Code,
+         PAGE_LENGTH            => (Value => A0B.Types.Unsigned_16 (Count)));
+
+      Data_Length :=
+        A0B.Types.Unsigned_32'Min
+          (Allocation_Length,
+           SCSI.SPC5.VPD.VPD_Page_Header_Length
+             + A0B.Types.Unsigned_32 (Count));
+   end Encode_Supported_VPD_Pages;
+
    ---------------------
    -- Execute_INQUIRY --
    ---------------------
@@ -194,11 +292,15 @@ package body Target.Handler is
       Put_Line ("SCSI: INQUIRY ALLOCATION LENGTH" & Descriptor.ALLOCATION_LENGTH'Image);
 
       if Descriptor.EVPD then
-         raise Program_Error;
-
-      else
-         Operation := (Inquiry, Descriptor);
+         if VPD (Descriptor.PAGE_CODE) = null then
+            raise Program_Error;
+         end if;
+      --
+      --  else
+      --     Operation := (Inquiry, Descriptor);
       end if;
+
+      Operation := (Inquiry, Descriptor);
    end Execute_INQUIRY;
 
    ---------------------
