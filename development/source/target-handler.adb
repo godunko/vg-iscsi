@@ -12,11 +12,16 @@ with Ada.Text_IO; use Ada.Text_IO;
 
 with A0B.Types.Big_Endian;
 
+with SCSI.Commands.SBC;
 with SCSI.Commands.SPC;
 with SCSI.SAM5;
+with SCSI.SBC4.CDB;
+with SCSI.SBC4.Data;
 with SCSI.SPC5.CDB;
 with SCSI.SPC5.Data;
 with SCSI.SPC5.VPD;
+
+with Target.File;
 
 package body Target.Handler is
 
@@ -26,6 +31,11 @@ package body Target.Handler is
    function Decode_INQUIRY
      (CDB_Storage : A0B.Types.Arrays.Unsigned_8_Array;
       Descriptor  : out SCSI.Commands.SPC.INQUIRY_Command_Descriptor;
+      Sense       : out SCSI.SAM5.Sense_Data) return Boolean;
+
+   function Decode_READ_CAPACITY_16
+     (CDB_Storage : SCSI.SPC5.CDB.SERVICE_ACTION_IN_16_CDB;
+      Descriptor  : out SCSI.Commands.SBC.READ_CAPACITY_Command_Descriptor;
       Sense       : out SCSI.SAM5.Sense_Data) return Boolean;
 
    function Decode_REPORT_LUNS
@@ -41,11 +51,19 @@ package body Target.Handler is
    procedure Execute_INQUIRY
      (Descriptor : SCSI.Commands.SPC.INQUIRY_Command_Descriptor);
 
+   procedure Execute_READ_CAPACITY
+     (Descriptor : SCSI.Commands.SBC.READ_CAPACITY_Command_Descriptor);
+
    procedure Execute_REPORT_LUNS
      (Descriptor : SCSI.Commands.SPC.REPORT_LUNS_Command_Descriptor);
 
    procedure Execute_TEST_UNIT_READY
      (Descriptor : SCSI.Commands.SPC.TEST_UNIT_READY_Command_Descriptor);
+
+   procedure Encode_READ_CAPACITY_Data
+     (Allocation_Length : A0B.Types.Unsigned_32;
+      Storage_Address   : System.Address;
+      Data_Length       : out A0B.Types.Unsigned_32);
 
    procedure Encode_REPORT_LUNS_Data
      (Allocation_Length : A0B.Types.Unsigned_32;
@@ -62,7 +80,7 @@ package body Target.Handler is
       Storage_Address   : System.Address;
       Data_Length       : out A0B.Types.Unsigned_32);
 
-   type Operation_Kind is (None, Inquiry, Report_Luns);
+   type Operation_Kind is (None, Inquiry, Read_Capacity, Report_Luns);
 
    type Operation_Information (Kind : Operation_Kind := None) is record
       case Kind is
@@ -71,6 +89,9 @@ package body Target.Handler is
 
          when Inquiry =>
             Inquiry : SCSI.Commands.SPC.INQUIRY_Command_Descriptor;
+
+         when Read_Capacity =>
+            Read_Capacity : SCSI.Commands.SBC.READ_CAPACITY_Command_Descriptor;
 
          when Report_Luns =>
             Report_Luns : SCSI.Commands.SPC.REPORT_LUNS_Command_Descriptor;
@@ -120,6 +141,12 @@ package body Target.Handler is
                   Storage_Address   => Storage_Address,
                   Data_Length       => Data_Length);
             end if;
+
+         when Read_Capacity =>
+            Encode_READ_CAPACITY_Data
+              (Allocation_Length => Operation.Read_Capacity.ALLOCATION_LENGTH,
+               Storage_Address   => Storage_Address,
+               Data_Length       => Data_Length);
 
          when Report_Luns =>
             Encode_REPORT_LUNS_Data
@@ -210,6 +237,60 @@ package body Target.Handler is
 
       return True;
    end Decode_INQUIRY;
+
+   -----------------------------
+   -- Decode_READ_CAPACITY_16 --
+   -----------------------------
+
+   function Decode_READ_CAPACITY_16
+     (CDB_Storage : SCSI.SPC5.CDB.SERVICE_ACTION_IN_16_CDB;
+      Descriptor  : out SCSI.Commands.SBC.READ_CAPACITY_Command_Descriptor;
+      Sense       : out SCSI.SAM5.Sense_Data) return Boolean
+   is
+      use type A0B.Types.Reserved_1;
+      use type A0B.Types.Reserved_3;
+      use type A0B.Types.Reserved_7;
+      use type A0B.Types.Reserved_8;
+
+   begin
+      declare
+         CDB : constant SCSI.SBC4.CDB.READ_CAPACITY_16_CDB
+           with Import, Address => CDB_Storage'Address;
+
+      begin
+         if CDB.Reserved_1_7_5 /= A0B.Types.Zero
+           or CDB.Reserved_14_7_1 /= A0B.Types.Zero
+         then
+            Sense := SCSI.SPC5.INVALID_FIELD_IN_CDB;
+
+            return False;
+         end if;
+
+         if CDB.Obsolete_2 /= A0B.Types.Zero
+           or CDB.Obsolete_3 /= A0B.Types.Zero
+           or CDB.Obsolete_4 /= A0B.Types.Zero
+           or CDB.Obsolete_5 /= A0B.Types.Zero
+           or CDB.Obsolete_6 /= A0B.Types.Zero
+           or CDB.Obsolete_7 /= A0B.Types.Zero
+           or CDB.Obsolete_8 /= A0B.Types.Zero
+           or CDB.Obsolete_9 /= A0B.Types.Zero
+           or CDB.Obsolete_14_0_0 /= A0B.Types.Zero
+         then
+            Sense := SCSI.SPC5.INVALID_FIELD_IN_CDB;
+
+            return False;
+         end if;
+
+         --  XXX CONTROL is not validated/decoded
+
+         Descriptor :=
+           (Variant           => SCSI.Commands.SBC.READ_CAPACITY_16,
+            SERVICE_ACTION    => CDB.SERVICE_ACTION,
+            ALLOCATION_LENGTH => CDB.ALLOCATION_LENGTH.Value);
+      end;
+
+      return True;
+   end Decode_READ_CAPACITY_16;
 
    ------------------------
    -- Decode_REPORT_LUNS --
@@ -326,6 +407,44 @@ package body Target.Handler is
 
       return True;
    end Decode_TEST_UNIT_READY;
+
+   -------------------------------
+   -- Encode_READ_CAPACITY_Data --
+   -------------------------------
+
+   procedure Encode_READ_CAPACITY_Data
+     (Allocation_Length : A0B.Types.Unsigned_32;
+      Storage_Address   : System.Address;
+      Data_Length       : out A0B.Types.Unsigned_32) is
+   begin
+      case Operation.Read_Capacity.Variant is
+         when SCSI.Commands.SBC.READ_CAPACITY_10 =>
+            raise Program_Error;
+
+         when SCSI.Commands.SBC.READ_CAPACITY_16 =>
+            declare
+               Data : SCSI.SBC4.Data.READ_CAPACITY_16_Data
+                 with Import, Address => Storage_Address;
+
+            begin
+               Data :=
+                 (RETURNED_LOGICAL_BLOCK_ADDRESS             =>
+                    (Value => Target.File.Last_LBA),
+                  BLOCK_LENGTH_IN_BYTES                      => (Value => 512),
+                  P_TYPE                                     => 0,
+                  PROT_EN                                    => False,
+                  P_I_EXPONENT                               => 0,
+                  LOGICAL_BLOCKS_PER_PHYSICAL_BLOCK_EXPONENT => 0,
+                  LOWEST_ALIGNED_LOGICAL_BLOCK_ADDRESS       => (Value => 0),
+                  others => <>);
+
+               Data_Length :=
+                 A0B.Types.Unsigned_32'Min
+                   (Allocation_Length,
+                    SCSI.SBC4.Data.READ_CAPACITY_16_Data_Length);
+            end;
+      end case;
+   end Encode_READ_CAPACITY_Data;
 
    -----------------------------
    -- Encode_REPORT_LUNS_Data --
@@ -491,6 +610,16 @@ package body Target.Handler is
       Operation := (Inquiry, Descriptor);
    end Execute_INQUIRY;
 
+   ---------------------------
+   -- Execute_READ_CAPACITY --
+   ---------------------------
+
+   procedure Execute_READ_CAPACITY
+     (Descriptor : SCSI.Commands.SBC.READ_CAPACITY_Command_Descriptor) is
+   begin
+      Operation := (Read_Capacity, Descriptor);
+   end Execute_READ_CAPACITY;
+
    -------------------------
    -- Execute_REPORT_LUNS --
    -------------------------
@@ -532,6 +661,9 @@ package body Target.Handler is
             return False;
 
          when Inquiry =>
+            return True;
+
+         when Read_Capacity =>
             return True;
 
          when Report_Luns =>
@@ -599,6 +731,48 @@ package body Target.Handler is
                      raise Program_Error;
                      --  Command_Decode_Failure (Sense);
                   end if;
+               end;
+
+            when SCSI.SPC5.SERVICE_ACTION_IN_16 =>
+               if CDB_Storage'Length
+                    /= SCSI.SPC5.CDB.SERVICE_ACTION_IN_16_CDB_Length
+               then
+                  --  Sense := SCSI.SPC5.INVALID_FIELD_IN_CDB;
+
+                  raise Program_Error;
+               end if;
+
+               declare
+                  CDB : constant SCSI.SPC5.CDB.SERVICE_ACTION_IN_16_CDB
+                    with Import, Address => CDB_Storage'Address;
+
+               begin
+                  case CDB.SERVICE_ACTION is
+                     when SCSI.SBC4.READ_CAPACITY_16 =>
+                        declare
+                           use type SCSI.SAM5.Sense_Data;
+
+                           Descriptor :
+                             SCSI.Commands.SBC.READ_CAPACITY_Command_Descriptor;
+                           Sense      : SCSI.SAM5.Sense_Data;
+
+                        begin
+                           if Decode_READ_CAPACITY_16
+                             (CDB, Descriptor, Sense)
+                           then
+                              pragma Assert (Sense = SCSI.SPC5.NO_SENSE);
+
+                              Execute_READ_CAPACITY (Descriptor);
+
+                           else
+                              raise Program_Error;
+                              --  Command_Decode_Failure (Sense);
+                           end if;
+                        end;
+
+                     when others =>
+                        raise Program_Error;
+                  end case;
                end;
 
             when SCSI.SPC5.TEST_UNIT_READY =>
