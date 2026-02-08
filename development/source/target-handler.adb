@@ -10,6 +10,8 @@ with System.Storage_Elements;
 
 with Ada.Text_IO; use Ada.Text_IO;
 
+with A0B.Types.Big_Endian;
+
 with SCSI.Commands.SPC;
 with SCSI.SAM5;
 with SCSI.SPC5.CDB;
@@ -26,6 +28,11 @@ package body Target.Handler is
       Descriptor  : out SCSI.Commands.SPC.INQUIRY_Command_Descriptor;
       Sense       : out SCSI.SAM5.Sense_Data) return Boolean;
 
+   function Decode_REPORT_LUNS
+     (CDB_Storage : A0B.Types.Arrays.Unsigned_8_Array;
+      Descriptor  : out SCSI.Commands.SPC.REPORT_LUNS_Command_Descriptor;
+      Sense       : out SCSI.SAM5.Sense_Data) return Boolean;
+
    function Decode_TEST_UNIT_READY
      (CDB_Storage : A0B.Types.Arrays.Unsigned_8_Array;
       Descriptor  : out SCSI.Commands.SPC.TEST_UNIT_READY_Command_Descriptor;
@@ -34,10 +41,13 @@ package body Target.Handler is
    procedure Execute_INQUIRY
      (Descriptor : SCSI.Commands.SPC.INQUIRY_Command_Descriptor);
 
+   procedure Execute_REPORT_LUNS
+     (Descriptor : SCSI.Commands.SPC.REPORT_LUNS_Command_Descriptor);
+
    procedure Execute_TEST_UNIT_READY
      (Descriptor : SCSI.Commands.SPC.TEST_UNIT_READY_Command_Descriptor);
 
-   procedure Encode_Supported_VPD_Pages
+   procedure Encode_REPORT_LUNS_Data
      (Allocation_Length : A0B.Types.Unsigned_32;
       Storage_Address   : System.Address;
       Data_Length       : out A0B.Types.Unsigned_32);
@@ -47,7 +57,12 @@ package body Target.Handler is
       Storage_Address   : System.Address;
       Data_Length       : out A0B.Types.Unsigned_32);
 
-   type Operation_Kind is (None, Inquiry);
+   procedure Encode_Supported_VPD_Pages
+     (Allocation_Length : A0B.Types.Unsigned_32;
+      Storage_Address   : System.Address;
+      Data_Length       : out A0B.Types.Unsigned_32);
+
+   type Operation_Kind is (None, Inquiry, Report_Luns);
 
    type Operation_Information (Kind : Operation_Kind := None) is record
       case Kind is
@@ -56,6 +71,9 @@ package body Target.Handler is
 
          when Inquiry =>
             Inquiry : SCSI.Commands.SPC.INQUIRY_Command_Descriptor;
+
+         when Report_Luns =>
+            Report_Luns : SCSI.Commands.SPC.REPORT_LUNS_Command_Descriptor;
       end case;
    end record;
 
@@ -102,6 +120,12 @@ package body Target.Handler is
                   Storage_Address   => Storage_Address,
                   Data_Length       => Data_Length);
             end if;
+
+         when Report_Luns =>
+            Encode_REPORT_LUNS_Data
+              (Allocation_Length => Operation.Report_Luns.ALLOCATION_LENGTH,
+               Storage_Address   => Storage_Address,
+               Data_Length       => Data_Length);
       end case;
    end Data_In;
 
@@ -187,6 +211,60 @@ package body Target.Handler is
       return True;
    end Decode_INQUIRY;
 
+   ------------------------
+   -- Decode_REPORT_LUNS --
+   ------------------------
+
+   function Decode_REPORT_LUNS
+     (CDB_Storage : A0B.Types.Arrays.Unsigned_8_Array;
+      Descriptor  : out SCSI.Commands.SPC.REPORT_LUNS_Command_Descriptor;
+      Sense       : out SCSI.SAM5.Sense_Data) return Boolean
+   is
+      use type A0B.Types.Reserved_8;
+
+   begin
+      case Length_Check is
+         when Default | USB_MSC_BOOT =>
+            if CDB_Storage'Length /= SCSI.SPC5.CDB.REPORT_LUNS_CDB_Length then
+               Sense := SCSI.SPC5.INVALID_FIELD_IN_CDB;
+
+               return False;
+            end if;
+
+         when iSCSI =>
+            if CDB_Storage'Length /= iSCSI_CDB_Minumum_Length then
+               Sense := SCSI.SPC5.INVALID_FIELD_IN_CDB;
+
+               return False;
+            end if;
+      end case;
+
+      declare
+         CDB : constant SCSI.SPC5.CDB.REPORT_LUNS_CDB
+           with Import, Address => CDB_Storage'Address;
+
+      begin
+         if CDB.Reserved_1 /= A0B.Types.Zero
+           or CDB.Reserved_3 /= A0B.Types.Zero
+           or CDB.Reserved_4 /= A0B.Types.Zero
+           or CDB.Reserved_5 /= A0B.Types.Zero
+           or CDB.Reserved_10 /= A0B.Types.Zero
+         then
+            Sense := SCSI.SPC5.INVALID_FIELD_IN_CDB;
+
+            return False;
+         end if;
+
+         --  XXX CONTROL is not validated/decoded
+
+         Descriptor :=
+           (ALLOCATION_LENGTH => CDB.ALLOCATION_LENGTH.Value,
+            SELECT_REPORT     => CDB.SELECT_REPORT);
+      end;
+
+      return True;
+   end Decode_REPORT_LUNS;
+
    ----------------------------
    -- Decode_TEST_UNIT_READY --
    ----------------------------
@@ -248,6 +326,44 @@ package body Target.Handler is
 
       return True;
    end Decode_TEST_UNIT_READY;
+
+   -----------------------------
+   -- Encode_REPORT_LUNS_Data --
+   -----------------------------
+
+   procedure Encode_REPORT_LUNS_Data
+     (Allocation_Length : A0B.Types.Unsigned_32;
+      Storage_Address   : System.Address;
+      Data_Length       : out A0B.Types.Unsigned_32)
+   is
+      use type A0B.Types.Unsigned_8;
+      use type A0B.Types.Unsigned_32;
+      pragma Warnings (Off, "use clause for type ""*"" has no effect");
+      --  XXX FSF GCC 15
+      use type System.Storage_Elements.Storage_Offset;
+      pragma Warnings (On, "use clause for type ""*"" has no effect");
+
+      Header : SCSI.SPC5.Data.REPORT_LUNS_Data_Header
+        with Import, Address => Storage_Address;
+      LUNs   : array (A0B.Types.Unsigned_8 range 0 .. 0)
+        of A0B.Types.Big_Endian.Unsigned_64
+          with Import,
+               Address =>
+                 Storage_Address + SCSI.SPC5.Data.REPORT_LUNS_Data_Header_Length;
+
+   begin
+      if Operation.Report_Luns.SELECT_REPORT /= 0 then
+         raise Program_Error;
+      end if;
+
+      LUNs (0) := (Value => 0);
+      Header := (LUN_LIST_LENGTH => (Value => 8), others => <>);
+
+      Data_Length :=
+        A0B.Types.Unsigned_32'Min
+          (Allocation_Length,
+           SCSI.SPC5.Data.REPORT_LUNS_Data_Header_Length + 8);
+   end Encode_REPORT_LUNS_Data;
 
    ----------------------------------
    -- Encode_Standard_INQUIRY_Data --
@@ -375,6 +491,23 @@ package body Target.Handler is
       Operation := (Inquiry, Descriptor);
    end Execute_INQUIRY;
 
+   -------------------------
+   -- Execute_REPORT_LUNS --
+   -------------------------
+
+   procedure Execute_REPORT_LUNS
+     (Descriptor : SCSI.Commands.SPC.REPORT_LUNS_Command_Descriptor)
+   is
+      use type A0B.Types.Unsigned_8;
+
+   begin
+      if Descriptor.SELECT_REPORT /= 0 then
+         raise Program_Error;
+      end if;
+
+      Operation := (Report_Luns, Descriptor);
+   end Execute_REPORT_LUNS;
+
    -----------------------------
    -- Execute_TEST_UNIT_READY --
    -----------------------------
@@ -394,7 +527,17 @@ package body Target.Handler is
 
    function Has_Data_In return Boolean is
    begin
-      return Operation.Kind = Inquiry;
+      case Operation.Kind is
+         when None =>
+            return False;
+
+         when Inquiry =>
+            return True;
+
+         when Report_Luns =>
+            return True;
+      end case;
+      --  return Operation.Kind in Inquiry | Report_Luns;
    end Has_Data_In;
 
    ---------------------
@@ -429,6 +572,28 @@ package body Target.Handler is
                      pragma Assert (Sense = SCSI.SPC5.NO_SENSE);
 
                      Execute_INQUIRY (Descriptor);
+
+                  else
+                     raise Program_Error;
+                     --  Command_Decode_Failure (Sense);
+                  end if;
+               end;
+
+            when SCSI.SPC5.REPORT_LUNS =>
+               declare
+                  use type SCSI.SAM5.Sense_Data;
+
+                  Descriptor :
+                    SCSI.Commands.SPC.REPORT_LUNS_Command_Descriptor;
+                  Sense      : SCSI.SAM5.Sense_Data;
+
+               begin
+                  if Decode_REPORT_LUNS
+                    (CDB_Storage, Descriptor, Sense)
+                  then
+                     pragma Assert (Sense = SCSI.SPC5.NO_SENSE);
+
+                     Execute_REPORT_LUNS (Descriptor);
 
                   else
                      raise Program_Error;
