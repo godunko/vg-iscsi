@@ -78,7 +78,11 @@ procedure Target.Driver is
    Response_Storage : Ada.Streams.Stream_Element_Array (0 .. 65_535);
    Response_Length  : A0B.Types.Unsigned_32;
 
-   --  DataSN           : A0B.Types.Unsigned_32 := 0;
+   --  Command_DataSN           : A0B.Types.Unsigned_32 := 0;
+   Session_CmdSN     : A0B.Types.Unsigned_32 := 0;
+   Session_ExpCmdSN  : A0B.Types.Unsigned_32 := 0;
+   Session_MaxCmdSN  : A0B.Types.Unsigned_32 := 0;
+   Connection_StatSN : A0B.Types.Unsigned_32 := 0;
 
    ---------------------------
    -- Process_Login_Request --
@@ -129,6 +133,11 @@ procedure Target.Driver is
          Response_Data_Address => Response_Storage'Address,
          Response_Data_Length  => Response_Length);
 
+      if not Header.Immediate then
+         Session_ExpCmdSN := @ + 1;
+         Session_MaxCmdSN := @ + 1;
+      end if;
+
       declare
          Request_Header : iSCSI.PDUs.Login_Request_Header
            with Import, Address => Header_Storage'Address;
@@ -145,9 +154,9 @@ procedure Target.Driver is
             ISID               => Request_Header.ISID,
             TSIH               => 16#1234#,
             Initiator_Task_Tag => Request_Header.Initiator_Task_Tag,
-            StatSN             => 0,
-            ExpCmdSN           => 0,
-            MaxCmdSN           => 0,
+            StatSN             => Connection_StatSN,
+            ExpCmdSN           => Session_ExpCmdSN,
+            MaxCmdSN           => Session_MaxCmdSN,
             Status_Class       => 0,
             Status_Detail      => 0,
             others             => <>);
@@ -159,6 +168,8 @@ procedure Target.Driver is
            with Import, Address => Response_Storage'Address;
 
       begin
+         Connection_StatSN := @ + 1;
+
          GNAT.Sockets.Send_Socket
            (Socket => Accept_Socket,
             Item   => Header_Storage,
@@ -198,7 +209,7 @@ procedure Target.Driver is
       Target.Handler.Data_In (Response_Storage'Address, Response_Length);
 
       declare
-         Request_Header : iSCSI.PDUs.Login_Request_Header
+         Request_Header : iSCSI.PDUs.SCSI_Command_Header
            with Import, Address => Header_Storage'Address;
 
          Header       : iSCSI.PDUs.SCSI_Data_In_Header :=
@@ -214,9 +225,9 @@ procedure Target.Driver is
             Logical_Unit_Number => 0,
             Initiator_Task_Tag  => Request_Header.Initiator_Task_Tag,
             Target_Transfer_Tag => 0,
-            StatSN              => 0,
-            ExpCmdSN            => 0,
-            MaxCmdSN            => 0,
+            StatSN              => Connection_StatSN,
+            ExpCmdSN            => Session_ExpCmdSN,
+            MaxCmdSN            => Session_MaxCmdSN,
             DataSN              => 0,  --  DataSN,
             Buffer_Offset       => 0,
             Residual_Count      => 0,
@@ -245,6 +256,12 @@ procedure Target.Driver is
          Put_Line ("  ... done.");
       end;
 
+      if not Header.Immediate then
+         Session_ExpCmdSN := @ + 1;
+         Session_MaxCmdSN := @ + 1;
+         Put_Line ("   ... ExpCmdSN/MaxCmdSN incremented");
+      end if;
+
       declare
          Request_Header : iSCSI.PDUs.Login_Request_Header
            with Import, Address => Header_Storage'Address;
@@ -261,9 +278,9 @@ procedure Target.Driver is
             DataSegmentLength                     => 0,
             Initiator_Task_Tag                    => Request_Header.Initiator_Task_Tag,
             SNACK_Tag                             => 0,
-            StatSN                                => 0,
-            ExpCmdSN                              => 0,
-            MaxCmdSN                              => 0,
+            StatSN                                => Connection_StatSN,
+            ExpCmdSN                              => Session_ExpCmdSN,
+            MaxCmdSN                              => Session_MaxCmdSN,
             ExpDataSN                             => 0,
             Bidirectional_Read_Residual_Count     => 0,
             Residual_Count                        => 0,
@@ -276,6 +293,8 @@ procedure Target.Driver is
          --      with Import, Address => Response_Storage'Address;
 
       begin
+         Connection_StatSN := @ + 1;
+
          Put_Line ("Send SCSI Response ...");
          GNAT.Sockets.Send_Socket
            (Socket => Accept_Socket,
