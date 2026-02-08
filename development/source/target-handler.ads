@@ -17,6 +17,8 @@ package Target.Handler is
      (Storage_Address : System.Address;
       Data_Length     : out A0B.Types.Unsigned_32);
 
+   function Has_Data_In return Boolean;
+
 private
 
    type Length_Check_Rule is (Default, USB_MSC_BOOT, iSCSI);

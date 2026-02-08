@@ -26,8 +26,16 @@ package body Target.Handler is
       Descriptor  : out SCSI.Commands.SPC.INQUIRY_Command_Descriptor;
       Sense       : out SCSI.SAM5.Sense_Data) return Boolean;
 
+   function Decode_TEST_UNIT_READY
+     (CDB_Storage : A0B.Types.Arrays.Unsigned_8_Array;
+      Descriptor  : out SCSI.Commands.SPC.TEST_UNIT_READY_Command_Descriptor;
+      Sense       : out SCSI.SAM5.Sense_Data) return Boolean;
+
    procedure Execute_INQUIRY
      (Descriptor : SCSI.Commands.SPC.INQUIRY_Command_Descriptor);
+
+   procedure Execute_TEST_UNIT_READY
+     (Descriptor : SCSI.Commands.SPC.TEST_UNIT_READY_Command_Descriptor);
 
    procedure Encode_Supported_VPD_Pages
      (Allocation_Length : A0B.Types.Unsigned_32;
@@ -165,6 +173,8 @@ package body Target.Handler is
             return False;
          end if;
 
+         --  XXX CONTROL is not validated/decoded
+
          Descriptor :=
            (EVPD              => CDB.EVPD,
             PAGE_CODE         => CDB.PAGE_CODE,
@@ -176,6 +186,68 @@ package body Target.Handler is
 
       return True;
    end Decode_INQUIRY;
+
+   ----------------------------
+   -- Decode_TEST_UNIT_READY --
+   ----------------------------
+
+   function Decode_TEST_UNIT_READY
+     (CDB_Storage : A0B.Types.Arrays.Unsigned_8_Array;
+      Descriptor  : out SCSI.Commands.SPC.TEST_UNIT_READY_Command_Descriptor;
+      Sense       : out SCSI.SAM5.Sense_Data) return Boolean
+   is
+      use type A0B.Types.Reserved_8;
+
+   begin
+      case Length_Check is
+         when Default =>
+            if CDB_Storage'Length
+                 /= SCSI.SPC5.CDB.TEST_UNIT_READY_CDB_Length
+            then
+               Sense := SCSI.SPC5.INVALID_FIELD_IN_CDB;
+
+               return False;
+            end if;
+
+         when USB_MSC_BOOT =>
+            if CDB_Storage'Length /= SCSI.SPC5.CDB.TEST_UNIT_READY_CDB_Length
+              and CDB_Storage'Length /= USB_MSC_BOOT_CDB_Length
+            then
+               Sense := SCSI.SPC5.INVALID_FIELD_IN_CDB;
+
+               return False;
+            end if;
+
+         when iSCSI =>
+            if CDB_Storage'Length /= iSCSI_CDB_Minumum_Length then
+               Sense := SCSI.SPC5.INVALID_FIELD_IN_CDB;
+
+               return False;
+            end if;
+      end case;
+
+      declare
+         CDB : constant SCSI.SPC5.CDB.TEST_UNIT_READY_CDB
+           with Import, Address => CDB_Storage'Address;
+
+      begin
+         if CDB.Reserved_1 /= A0B.Types.Zero
+           or CDB.Reserved_2 /= A0B.Types.Zero
+           or CDB.Reserved_3 /= A0B.Types.Zero
+           or CDB.Reserved_4 /= A0B.Types.Zero
+         then
+            Sense := SCSI.SPC5.INVALID_FIELD_IN_CDB;
+
+            return False;
+         end if;
+
+         --  XXX CONTROL is not validated/decoded
+
+         Descriptor := (null record);
+      end;
+
+      return True;
+   end Decode_TEST_UNIT_READY;
 
    ----------------------------------
    -- Encode_Standard_INQUIRY_Data --
@@ -303,6 +375,28 @@ package body Target.Handler is
       Operation := (Inquiry, Descriptor);
    end Execute_INQUIRY;
 
+   -----------------------------
+   -- Execute_TEST_UNIT_READY --
+   -----------------------------
+
+   procedure Execute_TEST_UNIT_READY
+     (Descriptor : SCSI.Commands.SPC.TEST_UNIT_READY_Command_Descriptor)
+   is
+      pragma Unreferenced (Descriptor);
+
+   begin
+      Operation := (Kind => None);
+   end Execute_TEST_UNIT_READY;
+
+   -----------------
+   -- Has_Data_In --
+   -----------------
+
+   function Has_Data_In return Boolean is
+   begin
+      return Operation.Kind = Inquiry;
+   end Has_Data_In;
+
    ---------------------
    -- Process_Command --
    ---------------------
@@ -335,6 +429,28 @@ package body Target.Handler is
                      pragma Assert (Sense = SCSI.SPC5.NO_SENSE);
 
                      Execute_INQUIRY (Descriptor);
+
+                  else
+                     raise Program_Error;
+                     --  Command_Decode_Failure (Sense);
+                  end if;
+               end;
+
+            when SCSI.SPC5.TEST_UNIT_READY =>
+               declare
+                  use type SCSI.SAM5.Sense_Data;
+
+                  Descriptor :
+                    SCSI.Commands.SPC.TEST_UNIT_READY_Command_Descriptor;
+                  Sense      : SCSI.SAM5.Sense_Data;
+
+               begin
+                  if Decode_TEST_UNIT_READY
+                    (CDB_Storage, Descriptor, Sense)
+                  then
+                     pragma Assert (Sense = SCSI.SPC5.NO_SENSE);
+
+                     Execute_TEST_UNIT_READY (Descriptor);
 
                   else
                      raise Program_Error;

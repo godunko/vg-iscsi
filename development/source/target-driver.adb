@@ -186,77 +186,76 @@ procedure Target.Driver is
    --------------------------
 
    procedure Process_SCSI_Command is
-      Header : iSCSI.PDUs.SCSI_Command_Header
+      Request_Header : iSCSI.PDUs.SCSI_Command_Header
         with Import, Address => Header_Storage'Address;
 
    begin
-      Put_Line ("iSCSI Immediate: " & Header.Immediate'Image);
-      Put_Line ("iSCSI Final: " & Header.Final'Image);
-      Put_Line ("iSCSI Read: " & Header.Read'Image);
-      Put_Line ("iSCSI Write: " & Header.Write'Image);
-      Put_Line ("iSCSI Attr: " & Header.Attr'Image);
-      Put_Line ("iSCSI LUN: " & Header.Logical_Unit_Number'Image);
-      Put_Line ("iSCSI Initiator Task Tag" & Header.Initiator_Task_Tag'Image);
-      Put_Line ("iSCSI Expected Data Transfer Length" & Header.Expected_Data_Transfer_Length'Image);
-      Put_Line ("iSCSI CmdSN" & Header.CmdSN'Image);
-      Put_Line ("iSCSI ExpStatSN" & Header.ExpStatSN'Image);
-      Put_Line ("iSCSI CDB " & Header.SCSI_Command_Descriptor_Block'Image);
+      Put_Line ("iSCSI Immediate: " & Request_Header.Immediate'Image);
+      Put_Line ("iSCSI Final: " & Request_Header.Final'Image);
+      Put_Line ("iSCSI Read: " & Request_Header.Read'Image);
+      Put_Line ("iSCSI Write: " & Request_Header.Write'Image);
+      Put_Line ("iSCSI Attr: " & Request_Header.Attr'Image);
+      Put_Line ("iSCSI LUN: " & Request_Header.Logical_Unit_Number'Image);
+      Put_Line ("iSCSI Initiator Task Tag" & Request_Header.Initiator_Task_Tag'Image);
+      Put_Line ("iSCSI Expected Data Transfer Length" & Request_Header.Expected_Data_Transfer_Length'Image);
+      Put_Line ("iSCSI CmdSN" & Request_Header.CmdSN'Image);
+      Put_Line ("iSCSI ExpStatSN" & Request_Header.ExpStatSN'Image);
+      Put_Line ("iSCSI CDB " & Request_Header.SCSI_Command_Descriptor_Block'Image);
 
       Target.Handler.Process_Command
         (A0B.Types.Arrays.Unsigned_8_Array
-           (Header.SCSI_Command_Descriptor_Block));
+           (Request_Header.SCSI_Command_Descriptor_Block));
 
-      Target.Handler.Data_In (Response_Storage'Address, Response_Length);
+      if Target.Handler.Has_Data_In then
+         Target.Handler.Data_In (Response_Storage'Address, Response_Length);
 
-      declare
-         Request_Header : iSCSI.PDUs.SCSI_Command_Header
-           with Import, Address => Header_Storage'Address;
+         declare
+            Header       : iSCSI.PDUs.SCSI_Data_In_Header :=
+              (Opcode              => <>,
+               Final               => True,
+               Acknowledge         => False,
+               Residual_Overflow   => False,
+               Residual_Underflow  => False,
+               Status_Flag         => False,
+               Status              => <>,
+               TotalAHSLength      => 0,
+               DataSegmentLength   => A0B.Types.Unsigned_24 (Response_Length),
+               Logical_Unit_Number => 0,
+               Initiator_Task_Tag  => Request_Header.Initiator_Task_Tag,
+               Target_Transfer_Tag => 0,
+               StatSN              => Connection_StatSN,
+               ExpCmdSN            => Session_ExpCmdSN,
+               MaxCmdSN            => Session_MaxCmdSN,
+               DataSN              => 0,  --  DataSN,
+               Buffer_Offset       => 0,
+               Residual_Count      => 0,
+               others              => <>);
+            Header_Storage : Ada.Streams.Stream_Element_Array (0 .. 47)
+              with Import, Address => Header'Address;
 
-         Header       : iSCSI.PDUs.SCSI_Data_In_Header :=
-           (Opcode              => <>,
-            Final               => True,
-            Acknowledge         => False,
-            Residual_Overflow   => False,
-            Residual_Underflow  => False,
-            Status_Flag         => False,
-            Status              => <>,
-            TotalAHSLength      => 0,
-            DataSegmentLength   => A0B.Types.Unsigned_24 (Response_Length),
-            Logical_Unit_Number => 0,
-            Initiator_Task_Tag  => Request_Header.Initiator_Task_Tag,
-            Target_Transfer_Tag => 0,
-            StatSN              => Connection_StatSN,
-            ExpCmdSN            => Session_ExpCmdSN,
-            MaxCmdSN            => Session_MaxCmdSN,
-            DataSN              => 0,  --  DataSN,
-            Buffer_Offset       => 0,
-            Residual_Count      => 0,
-            others              => <>);
-         Header_Storage : Ada.Streams.Stream_Element_Array (0 .. 47)
-           with Import, Address => Header'Address;
+            Data           : Ada.Streams.Stream_Element_Array
+              (0 .. Adjusted_Size (Ada.Streams.Stream_Element_Offset (Response_Length)) - 1)
+              with Import, Address => Response_Storage'Address;
 
-         Data           : Ada.Streams.Stream_Element_Array
-          (0 .. Adjusted_Size (Ada.Streams.Stream_Element_Offset (Response_Length)) - 1)
-             with Import, Address => Response_Storage'Address;
+         begin
+            --  DataSN := @ + 1;
 
-      begin
-         --  DataSN := @ + 1;
+            Put_Line ("Send Data-In ...");
+            GNAT.Sockets.Send_Socket
+              (Socket => Accept_Socket,
+               Item   => Header_Storage,
+               Last   => Last);
+            Put_Line (Last'Image);
+            GNAT.Sockets.Send_Socket
+              (Socket => Accept_Socket,
+               Item   => Data,
+               Last   => Last);
+            Put_Line (Last'Image);
+            Put_Line ("  ... done.");
+         end;
+      end if;
 
-         Put_Line ("Send Data-In ...");
-         GNAT.Sockets.Send_Socket
-           (Socket => Accept_Socket,
-            Item   => Header_Storage,
-            Last   => Last);
-         Put_Line (Last'Image);
-         GNAT.Sockets.Send_Socket
-           (Socket => Accept_Socket,
-            Item   => Data,
-            Last   => Last);
-         Put_Line (Last'Image);
-         Put_Line ("  ... done.");
-      end;
-
-      if not Header.Immediate then
+      if not Request_Header.Immediate then
          Session_ExpCmdSN := @ + 1;
          Session_MaxCmdSN := @ + 1;
          Put_Line ("   ... ExpCmdSN/MaxCmdSN incremented");
