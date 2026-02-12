@@ -19,6 +19,7 @@ with SCSI.SBC4.CDB;
 with SCSI.SBC4.Data;
 with SCSI.SPC5.CDB;
 with SCSI.SPC5.Data;
+with SCSI.SPC5.Mode;
 with SCSI.SPC5.VPD;
 
 with Target.File;
@@ -31,6 +32,11 @@ package body Target.Handler is
    function Decode_INQUIRY
      (CDB_Storage : A0B.Types.Arrays.Unsigned_8_Array;
       Descriptor  : out SCSI.Commands.SPC.INQUIRY_Command_Descriptor;
+      Sense       : out SCSI.SAM5.Sense_Data) return Boolean;
+
+   function Decode_MODE_SENSE_6
+     (CDB_Storage : A0B.Types.Arrays.Unsigned_8_Array;
+      Descriptor  : out SCSI.Commands.SPC.MODE_SENSE_Command_Descriptor;
       Sense       : out SCSI.SAM5.Sense_Data) return Boolean;
 
    function Decode_READ_CAPACITY_16
@@ -51,6 +57,9 @@ package body Target.Handler is
    procedure Execute_INQUIRY
      (Descriptor : SCSI.Commands.SPC.INQUIRY_Command_Descriptor);
 
+   procedure Execute_MODE_SENSE
+     (Descriptor : SCSI.Commands.SPC.MODE_SENSE_Command_Descriptor);
+
    procedure Execute_READ_CAPACITY
      (Descriptor : SCSI.Commands.SBC.READ_CAPACITY_Command_Descriptor);
 
@@ -61,6 +70,11 @@ package body Target.Handler is
      (Descriptor : SCSI.Commands.SPC.TEST_UNIT_READY_Command_Descriptor);
 
    procedure Encode_READ_CAPACITY_Data
+     (Allocation_Length : A0B.Types.Unsigned_32;
+      Storage_Address   : System.Address;
+      Data_Length       : out A0B.Types.Unsigned_32);
+
+   procedure Encode_MODE_SENSE_Data
      (Allocation_Length : A0B.Types.Unsigned_32;
       Storage_Address   : System.Address;
       Data_Length       : out A0B.Types.Unsigned_32);
@@ -80,7 +94,8 @@ package body Target.Handler is
       Storage_Address   : System.Address;
       Data_Length       : out A0B.Types.Unsigned_32);
 
-   type Operation_Kind is (None, Inquiry, Read_Capacity, Report_Luns);
+   type Operation_Kind is
+     (None, Inquiry, Mode_Sense, Read_Capacity, Report_Luns);
 
    type Operation_Information (Kind : Operation_Kind := None) is record
       case Kind is
@@ -89,6 +104,9 @@ package body Target.Handler is
 
          when Inquiry =>
             Inquiry : SCSI.Commands.SPC.INQUIRY_Command_Descriptor;
+
+         when Mode_Sense =>
+            Mode_Sense : SCSI.Commands.SPC.MODE_SENSE_Command_Descriptor;
 
          when Read_Capacity =>
             Read_Capacity : SCSI.Commands.SBC.READ_CAPACITY_Command_Descriptor;
@@ -141,6 +159,12 @@ package body Target.Handler is
                   Storage_Address   => Storage_Address,
                   Data_Length       => Data_Length);
             end if;
+
+         when Mode_Sense =>
+            Encode_MODE_SENSE_Data
+              (Allocation_Length => Operation.Mode_Sense.ALLOCATION_LENGTH,
+               Storage_Address   => Storage_Address,
+               Data_Length       => Data_Length);
 
          when Read_Capacity =>
             Encode_READ_CAPACITY_Data
@@ -237,6 +261,64 @@ package body Target.Handler is
 
       return True;
    end Decode_INQUIRY;
+
+   -------------------------
+   -- Decode_MODE_SENSE_6 --
+   -------------------------
+
+   function Decode_MODE_SENSE_6
+     (CDB_Storage : A0B.Types.Arrays.Unsigned_8_Array;
+      Descriptor  : out SCSI.Commands.SPC.MODE_SENSE_Command_Descriptor;
+      Sense       : out SCSI.SAM5.Sense_Data) return Boolean
+   is
+      use type A0B.Types.Reserved_3;
+      use type A0B.Types.Reserved_4;
+
+   begin
+      case Length_Check is
+         when Default | USB_MSC_BOOT =>
+            if CDB_Storage'Length /= SCSI.SPC5.CDB.MODE_SENSE_6_CDB_Length then
+               Sense := SCSI.SPC5.INVALID_FIELD_IN_CDB;
+
+               return False;
+            end if;
+
+         when iSCSI =>
+            if CDB_Storage'Length /= iSCSI_CDB_Minumum_Length then
+               Sense := SCSI.SPC5.INVALID_FIELD_IN_CDB;
+
+               return False;
+            end if;
+      end case;
+
+      declare
+         CDB : SCSI.SPC5.CDB.MODE_SENSE_6_CDB
+           with Import, Address => CDB_Storage'Address;
+
+      begin
+         if CDB.Reserved_1_7_4 /= A0B.Types.Zero
+           or CDB.Reserved_1_0_2 /= A0B.Types.Zero
+         then
+            Sense := SCSI.SPC5.INVALID_FIELD_IN_CDB;
+
+            return False;
+         end if;
+
+         --  XXX CONTROL is not validated/decoded
+
+         Descriptor :=
+           (Variant           => SCSI.Commands.SPC.MODE_SENSE_6,
+            LLBAA             => False,
+            DBD               => CDB.DBD,
+            PC                => CDB.PC,
+            PAGE_CODE         => CDB.PAGE_CODE,
+            SUBPAGE_CODE      => CDB.SUBPAGE_CODE,
+            ALLOCATION_LENGTH =>
+              A0B.Types.Unsigned_32 (CDB.ALLOCATION_LENGTH));
+      end;
+
+      return True;
+   end Decode_MODE_SENSE_6;
 
    -----------------------------
    -- Decode_READ_CAPACITY_16 --
@@ -407,6 +489,39 @@ package body Target.Handler is
 
       return True;
    end Decode_TEST_UNIT_READY;
+
+   ----------------------------
+   -- Encode_MODE_SENSE_Data --
+   ----------------------------
+
+   procedure Encode_MODE_SENSE_Data
+     (Allocation_Length : A0B.Types.Unsigned_32;
+      Storage_Address   : System.Address;
+      Data_Length       : out A0B.Types.Unsigned_32) is
+   begin
+      case Operation.Mode_Sense.Variant is
+         when SCSI.Commands.SPC.MODE_SENSE_6 =>
+            declare
+               Data : SCSI.SPC5.Mode.MODE_6_Header
+                 with Import, Address => Storage_Address;
+
+            begin
+               Data :=
+                 (MODE_DATA_LENGTH          => 3,
+                  MEDIUM_TYPE               => 0,
+                  DEVICE_SPECIFIC_PARAMETER => 0,
+                  BLOCK_DESCRIPTOR_LENGTH   => 0);
+
+               Data_Length :=
+                 A0B.Types.Unsigned_32'Min
+                   (Allocation_Length,
+                    SCSI.SPC5.Mode.MODE_6_Header_Length);
+            end;
+
+         when SCSI.Commands.SPC.MODE_SENSE_10 =>
+            raise Program_Error;
+      end case;
+   end Encode_MODE_SENSE_Data;
 
    -------------------------------
    -- Encode_READ_CAPACITY_Data --
@@ -610,6 +725,28 @@ package body Target.Handler is
       Operation := (Inquiry, Descriptor);
    end Execute_INQUIRY;
 
+   ------------------------
+   -- Execute_MODE_SENSE --
+   ------------------------
+
+   procedure Execute_MODE_SENSE
+     (Descriptor : SCSI.Commands.SPC.MODE_SENSE_Command_Descriptor)
+   is
+      use type A0B.Types.Unsigned_2;
+      use type A0B.Types.Unsigned_8;
+      use type SCSI.SPC5.Mode_Page_Code;
+
+   begin
+      if Descriptor.PC /= 0
+        or Descriptor.SUBPAGE_CODE /= 0
+        or Descriptor.PAGE_CODE /= SCSI.SPC5.All_Pages
+      then
+         raise Program_Error;
+      end if;
+
+      Operation := (Mode_Sense, Descriptor);
+   end Execute_MODE_SENSE;
+
    ---------------------------
    -- Execute_READ_CAPACITY --
    ---------------------------
@@ -663,6 +800,9 @@ package body Target.Handler is
          when Inquiry =>
             return True;
 
+         when Mode_Sense =>
+            return True;
+
          when Read_Capacity =>
             return True;
 
@@ -704,6 +844,28 @@ package body Target.Handler is
                      pragma Assert (Sense = SCSI.SPC5.NO_SENSE);
 
                      Execute_INQUIRY (Descriptor);
+
+                  else
+                     raise Program_Error;
+                     --  Command_Decode_Failure (Sense);
+                  end if;
+               end;
+
+            when SCSI.SPC5.MODE_SENSE_6 =>
+               declare
+                  use type SCSI.SAM5.Sense_Data;
+
+                  Descriptor :
+                    SCSI.Commands.SPC.MODE_SENSE_Command_Descriptor;
+                  Sense      : SCSI.SAM5.Sense_Data;
+
+               begin
+                  if Decode_MODE_SENSE_6
+                    (CDB_Storage, Descriptor, Sense)
+                  then
+                     pragma Assert (Sense = SCSI.SPC5.NO_SENSE);
+
+                     Execute_MODE_SENSE (Descriptor);
 
                   else
                      raise Program_Error;
