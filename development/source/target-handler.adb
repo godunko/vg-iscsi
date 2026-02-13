@@ -53,6 +53,8 @@ package body Target.Handler is
       Descriptor  : out SCSI.Commands.SPC.TEST_UNIT_READY_Command_Descriptor)
       return Boolean;
 
+   procedure Failure_INVALID_COMMAND_OPERATION_CODE;
+
    function Failure_INVALID_FIELD_IN_CDB return Boolean;
 
    procedure Execute_INQUIRY
@@ -760,6 +762,18 @@ package body Target.Handler is
       Operation := (None, SCSI.SAM5.GOOD, SCSI.SPC5.NO_SENSE);
    end Execute_TEST_UNIT_READY;
 
+   --------------------------------------------
+   -- Failure_INVALID_COMMAND_OPERATION_CODE --
+   --------------------------------------------
+
+   procedure Failure_INVALID_COMMAND_OPERATION_CODE is
+   begin
+      Operation :=
+        (None,
+         SCSI.SAM5.CHECK_CONDITION,
+         SCSI.SPC5.INVALID_COMMAND_OPERATION_CODE);
+   end Failure_INVALID_COMMAND_OPERATION_CODE;
+
    ----------------------------------
    -- Failure_INVALID_FIELD_IN_CDB --
    ----------------------------------
@@ -905,7 +919,7 @@ package body Target.Handler is
                end;
 
             when others =>
-               raise Program_Error;
+               Failure_INVALID_COMMAND_OPERATION_CODE;
          end case;
       end;
    end Process_Command;
