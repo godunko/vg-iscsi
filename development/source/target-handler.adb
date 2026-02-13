@@ -685,7 +685,10 @@ package body Target.Handler is
 
       if Descriptor.EVPD then
          if VPD (Descriptor.PAGE_CODE) = null then
-            raise Program_Error;
+            Operation :=
+              (None, SCSI.SAM5.CHECK_CONDITION, SCSI.SPC5.INVALID_FIELD_IN_CDB);
+
+            return;
          end if;
       --
       --  else
