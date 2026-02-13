@@ -14,7 +14,6 @@ with A0B.Types.Big_Endian;
 
 with SCSI.Commands.SBC;
 with SCSI.Commands.SPC;
-with SCSI.SAM5;
 with SCSI.SBC4.CDB;
 with SCSI.SBC4.Data;
 with SCSI.SPC5.CDB;
@@ -710,7 +709,10 @@ package body Target.Handler is
         or Descriptor.SUBPAGE_CODE /= 0
         or Descriptor.PAGE_CODE /= SCSI.SPC5.All_Pages
       then
-         raise Program_Error;
+         Operation :=
+           (None, SCSI.SAM5.CHECK_CONDITION, SCSI.SPC5.INVALID_FIELD_IN_CDB);
+
+         return;
       end if;
 
       Operation := (Mode_Sense, SCSI.SAM5.GOOD, SCSI.SPC5.NO_SENSE, Descriptor);
@@ -907,5 +909,23 @@ package body Target.Handler is
          end case;
       end;
    end Process_Command;
+
+   -----------
+   -- Sense --
+   -----------
+
+   function Sense return SCSI.SAM5.Sense_Data is
+   begin
+      return Operation.Sense;
+   end Sense;
+
+   ------------
+   -- Status --
+   ------------
+
+   function Status return SCSI.SAM5.STATUS is
+   begin
+      return Operation.Status;
+   end Status;
 
 end Target.Handler;

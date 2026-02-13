@@ -12,11 +12,14 @@ with GNAT.Sockets;
 with System.Storage_Elements;
 
 with A0B.Types.Arrays;
+with A0B.Types.Big_Endian;
 
 with iSCSI.PDUs;
 with iSCSI.Target.Login;
 with iSCSI.Text;
 with iSCSI.Types;
+with SCSI.SAM5;
+with SCSI.SPC5.Sense;
 
 with Target.Handler;
 
@@ -272,6 +275,8 @@ procedure Target.Driver is
       end if;
 
       declare
+         use type SCSI.SAM5.STATUS;
+
          Header       : iSCSI.PDUs.SCSI_Response_Header :=
            (Opcode                                => <>,
             Bidirectional_Read_Residual_Overflow  => False,
@@ -280,7 +285,7 @@ procedure Target.Driver is
             Residual_Underflow                    =>
               Command_Expected_Data_Transfer_Length > Response_Length,
             Response                              => 0,
-            Status                                => 0,
+            Status                                => Target.Handler.Status,
             TotalAHSLength                        => 0,
             DataSegmentLength                     => 0,
             Initiator_Task_Tag                    => Command_Initiator_Task_Tag,
@@ -296,12 +301,40 @@ procedure Target.Driver is
          Header_Storage : Ada.Streams.Stream_Element_Array (0 .. 47)
            with Import, Address => Header'Address;
 
-         --  Data           : Ada.Streams.Stream_Element_Array
-         --   (0 .. Adjusted_Size (Ada.Streams.Stream_Element_Offset (Response_Length)) - 1)
-         --      with Import, Address => Response_Storage'Address;
+         Data           : Ada.Streams.Stream_Element_Array
+          (0 .. Adjusted_Size (18 + 2) - 1)
+             with Import, Address => Response_Storage'Address;
+         SenseLength    : A0B.Types.Big_Endian.Unsigned_16
+           with Import, Address => Data (0)'Address;
+         SenseData      : SCSI.SPC5.Sense.Fixed_Format
+           with Import, Address => Data (2)'Address;
 
       begin
          Connection_StatSN := @ + 1;
+
+         if Header.Status /= SCSI.SAM5.GOOD then
+            SenseLength := (Value => 18);
+
+            SenseData :=
+              (VALID                           => False,
+               RESPONSE_CODE                   => <>,
+               FILEMARK                        => False,
+               EOM                             => False,
+               ILI                             => False,
+               SDAT_OVFL                       => False,
+               SENSE_KEY                       => Target.Handler.Sense.SENSE_KEY,
+               INFORMATION                     => (Value => 0),
+               ADDITIONAL_SENSE_LENGTH         => <>,
+               COMMAND_SPECIFIC_INFORMATION    => (Value => 0),
+               ADDITIONAL_SENSE_CODE           =>
+                 Target.Handler.Sense.ADDITIONAL_SENSE_CODE,
+               ADDITIONAL_SENSE_CODE_QUALIFIER =>
+                 Target.Handler.Sense.ADDITIONAL_SENSE_CODE_QUALIFIER,
+               FIELD_REPLACEABLE_UNIT_CODE     => 0,
+               others                          => <>);
+
+            Header.DataSegmentLength := Data'Length;
+         end if;
 
          Put_Line ("Send SCSI Response ...");
          GNAT.Sockets.Send_Socket
@@ -309,11 +342,15 @@ procedure Target.Driver is
             Item   => Header_Storage,
             Last   => Last);
          Put_Line (Last'Image);
-         --  GNAT.Sockets.Send_Socket
-         --    (Socket => Accept_Socket,
-         --     Item   => Data,
-         --     Last   => Last);
-         --  Put_Line (Last'Image);
+
+         if Header.Status /= SCSI.SAM5.GOOD then
+            GNAT.Sockets.Send_Socket
+              (Socket => Accept_Socket,
+               Item   => Data,
+               Last   => Last);
+            Put_Line (Last'Image);
+         end if;
+
          Put_Line ("  ... done.");
       end;
    end Process_SCSI_Command;

@@ -8,6 +8,8 @@ with System;
 
 with A0B.Types.Arrays;
 
+with SCSI.SAM5;
+
 package Target.Handler is
 
    procedure Process_Command
@@ -18,6 +20,10 @@ package Target.Handler is
       Data_Length     : out A0B.Types.Unsigned_32);
 
    function Has_Data_In return Boolean;
+
+   function Status return SCSI.SAM5.STATUS;
+
+   function Sense return SCSI.SAM5.Sense_Data;
 
 private
 
