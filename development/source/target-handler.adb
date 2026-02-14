@@ -43,6 +43,11 @@ package body Target.Handler is
       Descriptor  : out SCSI.Commands.SBC.READ_Command_Descriptor)
       return Boolean;
 
+   function Decode_READ_10
+     (CDB_Storage : A0B.Types.Arrays.Unsigned_8_Array;
+      Descriptor  : out SCSI.Commands.SBC.READ_Command_Descriptor)
+      return Boolean;
+
    function Decode_READ_CAPACITY_16
      (CDB_Storage : SCSI.SPC5.CDB.SERVICE_ACTION_IN_16_CDB;
       Descriptor  : out SCSI.Commands.SBC.READ_CAPACITY_Command_Descriptor)
@@ -375,6 +380,71 @@ package body Target.Handler is
 
       return True;
    end Decode_READ_6;
+
+   --------------------
+   -- Decode_READ_10 --
+   --------------------
+
+   function Decode_READ_10
+     (CDB_Storage : A0B.Types.Arrays.Unsigned_8_Array;
+      Descriptor  : out SCSI.Commands.SBC.READ_Command_Descriptor)
+      return Boolean
+   is
+      use type A0B.Types.Reserved_1;
+      use type A0B.Types.Reserved_2;
+
+   begin
+      case Length_Check is
+         when Default =>
+            if CDB_Storage'Length /= SCSI.SBC4.CDB.READ_10_CDB_Length then
+               return Failure_INVALID_FIELD_IN_CDB;
+            end if;
+
+         when USB_MSC_BOOT =>
+            if CDB_Storage'Length /= SCSI.SBC4.CDB.READ_10_CDB_Length
+              and CDB_Storage'Length /= USB_MSC_BOOT_CDB_Length
+            then
+               return Failure_INVALID_FIELD_IN_CDB;
+            end if;
+
+         when iSCSI =>
+            if CDB_Storage'Length /= iSCSI_CDB_Minumum_Length then
+               return Failure_INVALID_FIELD_IN_CDB;
+            end if;
+      end case;
+
+      declare
+         CDB : constant SCSI.SBC4.CDB.READ_10_CDB
+           with Import, Address => CDB_Storage'Address;
+
+      begin
+         if CDB.Reserved_6_7_6 /= A0B.Types.Zero then
+            return Failure_INVALID_FIELD_IN_CDB;
+         end if;
+
+         if CDB.Obsolete_1_0_0 /= A0B.Types.Zero
+           or CDB.Obsolete_1_1_1 /= A0B.Types.Zero
+         then
+            return Failure_INVALID_FIELD_IN_CDB;
+         end if;
+
+         --  XXX CONTROL is not validated/decoded
+
+         Descriptor :=
+           (GROUP_NUMBER          => CDB.GROUP_NUMBER,
+            LOGICAL_BLOCK_ADDRESS =>
+              A0B.Types.Unsigned_64 (CDB.LOGICAL_BLOCK_ADDRESS.Value),
+            TRANSFER_LENGTH       =>
+              A0B.Types.Unsigned_32 (CDB.TRANSFER_LENGTH.Value),
+            RDPROTECT             => CDB.RDPROTECT,
+            DPO                   => CDB.DPO,
+            FUA                   => CDB.FUA,
+            RARC                  => CDB.RARC,
+            DLD                   => 0);  --  Not present in READ(10)
+      end;
+
+      return True;
+   end Decode_READ_10;
 
    -----------------------------
    -- Decode_READ_CAPACITY_16 --
@@ -941,6 +1011,16 @@ package body Target.Handler is
 
                begin
                   if Decode_READ_6 (CDB_Storage, Descriptor) then
+                     Execute_READ (Descriptor);
+                  end if;
+               end;
+
+            when SCSI.SBC4.READ_10 =>
+               declare
+                  Descriptor : SCSI.Commands.SBC.READ_Command_Descriptor;
+
+               begin
+                  if Decode_READ_10 (CDB_Storage, Descriptor) then
                      Execute_READ (Descriptor);
                   end if;
                end;
