@@ -30,8 +30,8 @@ package body Target.Handler is
 
    function Decode_INQUIRY
      (CDB_Storage : A0B.Types.Arrays.Unsigned_8_Array;
-      Descriptor  : out SCSI.Commands.SPC.INQUIRY_Command_Descriptor;
-      Sense       : out SCSI.SAM5.Sense_Data) return Boolean;
+      Descriptor  : out SCSI.Commands.SPC.INQUIRY_Command_Descriptor)
+      return Boolean;
 
    function Decode_MODE_SENSE_6
      (CDB_Storage : A0B.Types.Arrays.Unsigned_8_Array;
@@ -192,8 +192,8 @@ package body Target.Handler is
 
    function Decode_INQUIRY
      (CDB_Storage : A0B.Types.Arrays.Unsigned_8_Array;
-      Descriptor  : out SCSI.Commands.SPC.INQUIRY_Command_Descriptor;
-      Sense       : out SCSI.SAM5.Sense_Data) return Boolean
+      Descriptor  : out SCSI.Commands.SPC.INQUIRY_Command_Descriptor)
+      return Boolean
    is
       use type A0B.Types.Reserved_1;
       use type A0B.Types.Reserved_6;
@@ -250,8 +250,6 @@ package body Target.Handler is
             ALLOCATION_LENGTH =>
               A0B.Types.Unsigned_32 (CDB.ALLOCATION_LENGTH.Value));
       end;
-
-      Sense := SCSI.SPC5.NO_SENSE;
 
       return True;
    end Decode_INQUIRY;
@@ -836,20 +834,11 @@ package body Target.Handler is
          case Operation is
             when SCSI.SPC5.INQUIRY =>
                declare
-                  use type SCSI.SAM5.Sense_Data;
-
                   Descriptor : SCSI.Commands.SPC.INQUIRY_Command_Descriptor;
-                  Sense      : SCSI.SAM5.Sense_Data;
 
                begin
-                  if Decode_INQUIRY (CDB_Storage, Descriptor, Sense) then
-                     pragma Assert (Sense = SCSI.SPC5.NO_SENSE);
-
+                  if Decode_INQUIRY (CDB_Storage, Descriptor) then
                      Execute_INQUIRY (Descriptor);
-
-                  else
-                     raise Program_Error;
-                     --  Command_Decode_Failure (Sense);
                   end if;
                end;
 
