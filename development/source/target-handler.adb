@@ -38,6 +38,11 @@ package body Target.Handler is
       Descriptor  : out SCSI.Commands.SPC.MODE_SENSE_Command_Descriptor)
       return Boolean;
 
+   function Decode_READ_6
+     (CDB_Storage : A0B.Types.Arrays.Unsigned_8_Array;
+      Descriptor  : out SCSI.Commands.SBC.READ_Command_Descriptor)
+      return Boolean;
+
    function Decode_READ_CAPACITY_16
      (CDB_Storage : SCSI.SPC5.CDB.SERVICE_ACTION_IN_16_CDB;
       Descriptor  : out SCSI.Commands.SBC.READ_CAPACITY_Command_Descriptor)
@@ -62,6 +67,9 @@ package body Target.Handler is
 
    procedure Execute_MODE_SENSE
      (Descriptor : SCSI.Commands.SPC.MODE_SENSE_Command_Descriptor);
+
+   procedure Execute_READ
+     (Descriptor : SCSI.Commands.SBC.READ_Command_Descriptor);
 
    procedure Execute_READ_CAPACITY
      (Descriptor : SCSI.Commands.SBC.READ_CAPACITY_Command_Descriptor);
@@ -98,7 +106,7 @@ package body Target.Handler is
       Data_Length       : out A0B.Types.Unsigned_32);
 
    type Operation_Kind is
-     (None, Inquiry, Mode_Sense, Read_Capacity, Report_Luns);
+     (None, Inquiry, Mode_Sense, Read, Read_Capacity, Report_Luns);
 
    type Operation_Information (Kind : Operation_Kind := None) is record
       Status : SCSI.SAM5.STATUS;
@@ -113,6 +121,9 @@ package body Target.Handler is
 
          when Mode_Sense =>
             Mode_Sense : SCSI.Commands.SPC.MODE_SENSE_Command_Descriptor;
+
+         when Read =>
+            Read : SCSI.Commands.SBC.READ_Command_Descriptor;
 
          when Read_Capacity =>
             Read_Capacity : SCSI.Commands.SBC.READ_CAPACITY_Command_Descriptor;
@@ -171,6 +182,12 @@ package body Target.Handler is
               (Allocation_Length => Operation.Mode_Sense.ALLOCATION_LENGTH,
                Storage_Address   => Storage_Address,
                Data_Length       => Data_Length);
+
+         when Read =>
+            Target.File.Read
+              (Descriptor      => Operation.Read,
+               Storage_Address => Storage_Address,
+               Data_Length     => Data_Length);
 
          when Read_Capacity =>
             Encode_READ_CAPACITY_Data
@@ -305,6 +322,59 @@ package body Target.Handler is
 
       return True;
    end Decode_MODE_SENSE_6;
+
+   -------------------
+   -- Decode_READ_6 --
+   -------------------
+
+   function Decode_READ_6
+     (CDB_Storage : A0B.Types.Arrays.Unsigned_8_Array;
+      Descriptor  : out SCSI.Commands.SBC.READ_Command_Descriptor)
+      return Boolean
+   is
+      use type A0B.Types.Reserved_3;
+      use type A0B.Types.Unsigned_8;
+
+   begin
+      case Length_Check is
+         when Default | USB_MSC_BOOT =>
+            if CDB_Storage'Length /= SCSI.SBC4.CDB.READ_6_CDB_Length then
+               return Failure_INVALID_FIELD_IN_CDB;
+            end if;
+
+         when iSCSI =>
+            if CDB_Storage'Length /= iSCSI_CDB_Minumum_Length then
+               return Failure_INVALID_FIELD_IN_CDB;
+            end if;
+      end case;
+
+      declare
+         CDB : SCSI.SBC4.CDB.READ_6_CDB
+           with Import, Address => CDB_Storage'Address;
+
+      begin
+         if SCSI.SBC4.CDB.Reserved_1_7_5 (CDB) /= A0B.Types.Zero then
+            return Failure_INVALID_FIELD_IN_CDB;
+         end if;
+
+         --  XXX CONTROL is not validated/decoded
+
+         Descriptor :=
+           (GROUP_NUMBER          => 0,      --  Not present in READ(6)
+            LOGICAL_BLOCK_ADDRESS => SCSI.SBC4.CDB.LOGICAL_BLOCK_ADDRESS (CDB),
+            TRANSFER_LENGTH       =>
+              (if CDB.TRANSFER_LENGTH = 0
+                 then 256
+                 else A0B.Types.Unsigned_32 (CDB.TRANSFER_LENGTH)),
+            RDPROTECT             => 0,      --  Not present in READ(6)
+            DPO                   => False,  --  Not present in READ(6)
+            FUA                   => False,  --  Not present in READ(6)
+            RARC                  => False,  --  Not present in READ(6)
+            DLD                   => 0);     --  Not present in READ(6)
+      end;
+
+      return True;
+   end Decode_READ_6;
 
    -----------------------------
    -- Decode_READ_CAPACITY_16 --
@@ -721,6 +791,16 @@ package body Target.Handler is
       Operation := (Mode_Sense, SCSI.SAM5.GOOD, SCSI.SPC5.NO_SENSE, Descriptor);
    end Execute_MODE_SENSE;
 
+   ------------------
+   -- Execute_READ --
+   ------------------
+
+   procedure Execute_READ
+     (Descriptor : SCSI.Commands.SBC.READ_Command_Descriptor) is
+   begin
+      Operation := (Read, SCSI.SAM5.GOOD, SCSI.SPC5.NO_SENSE, Descriptor);
+   end Execute_READ;
+
    ---------------------------
    -- Execute_READ_CAPACITY --
    ---------------------------
@@ -803,13 +883,15 @@ package body Target.Handler is
          when Mode_Sense =>
             return True;
 
+         when Read =>
+            return True;
+
          when Read_Capacity =>
             return True;
 
          when Report_Luns =>
             return True;
       end case;
-      --  return Operation.Kind in Inquiry | Report_Luns;
    end Has_Data_In;
 
    ---------------------
@@ -850,6 +932,16 @@ package body Target.Handler is
                begin
                   if Decode_MODE_SENSE_6 (CDB_Storage, Descriptor) then
                      Execute_MODE_SENSE (Descriptor);
+                  end if;
+               end;
+
+            when SCSI.SBC4.READ_6 =>
+               declare
+                  Descriptor : SCSI.Commands.SBC.READ_Command_Descriptor;
+
+               begin
+                  if Decode_READ_6 (CDB_Storage, Descriptor) then
+                     Execute_READ (Descriptor);
                   end if;
                end;
 
