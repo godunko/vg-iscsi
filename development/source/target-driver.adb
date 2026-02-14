@@ -75,10 +75,10 @@ procedure Target.Driver is
    Basic_Header   : iSCSI.PDUs.Basic_Header_Segment
      with Import, Address => Header_Storage'Address;
 
-   Data_Storage   : Ada.Streams.Stream_Element_Array (0 .. 65_535);
+   Data_Storage   : Ada.Streams.Stream_Element_Array (0 .. 256*1024 -1); -- 65_535);
    Data_Last      : Ada.Streams.Stream_Element_Offset;
 
-   Response_Storage : Ada.Streams.Stream_Element_Array (0 .. 65_535);
+   Response_Storage : Ada.Streams.Stream_Element_Array (0 .. 256*1024 -1); --  65_535);
    Response_Length  : A0B.Types.Unsigned_32;
 
    --  Command_DataSN           : A0B.Types.Unsigned_32 := 0;
