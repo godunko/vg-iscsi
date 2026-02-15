@@ -4,14 +4,8 @@
 --  SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 --
 
-pragma Ada_2022;
-
-with Ada.Text_IO; use Ada.Text_IO;
-
 with Interfaces.C;
 with Interfaces.C_Streams;
-
-with A0B.Types.Arrays;
 
 package body Target.File is
 
@@ -147,21 +141,6 @@ package body Target.File is
 
    begin
       Open_File;
-
-      Put_Line
-        ("FILE: seek at"
-         & A0B.Types.Unsigned_64'Image
-           (Descriptor.LOGICAL_BLOCK_ADDRESS * Block_Length
-            + A0B.Types.Unsigned_64 (Buffer_Offset))
-        & " to write" & Data_Length'Image & " bytes");
-
-      declare
-         Data : A0B.Types.Arrays.Unsigned_8_Array (1 .. Data_Length)
-           with Import, Address => Storage_Address;
-
-      begin
-         Put_Line (Data'Image);
-      end;
 
       if Interfaces.C_Streams.fseek64
         (File,
