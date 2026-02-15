@@ -37,6 +37,14 @@ procedure Target.Driver is
 
    function To_String (Item : iSCSI.Text.UTF8_String) return String;
 
+   procedure Receive_PDU;
+
+   procedure Process_Login_Request;
+
+   procedure Process_SCSI_Command;
+
+   procedure Dispatch_PDU;
+
    -------------------
    -- Adjusted_Size --
    -------------------
@@ -48,18 +56,6 @@ procedure Target.Driver is
       return ((Value + 4 - 1) / 4) * 4;
    end Adjusted_Size;
 
-   ---------------
-   -- To_String --
-   ---------------
-
-   function To_String (Item : iSCSI.Text.UTF8_String) return String is
-      Result : constant String (1 .. Item'Length)
-        with Import, Address => Item'Address;
-
-   begin
-      return Result;
-   end To_String;
-
    Listen_Address : constant GNAT.Sockets.Sock_Addr_Type :=
      (Family => GNAT.Sockets.Family_Inet,
       Addr   => GNAT.Sockets.Inet_Addr ("127.0.0.1"),
@@ -70,10 +66,8 @@ procedure Target.Driver is
    Listen_Socket : GNAT.Sockets.Socket_Type;
    Accept_Socket : GNAT.Sockets.Socket_Type;
 
-   Header_Storage : Ada.Streams.Stream_Element_Array (0 .. 47);
-   Last           : Ada.Streams.Stream_Element_Offset;
-   Basic_Header   : iSCSI.PDUs.Basic_Header_Segment
-     with Import, Address => Header_Storage'Address;
+   Request_Header_Storage : Ada.Streams.Stream_Element_Array (0 .. 47);
+   Last                   : Ada.Streams.Stream_Element_Offset;
 
    Data_Storage   : Ada.Streams.Stream_Element_Array (0 .. 256*1024 -1); -- 65_535);
    Data_Last      : Ada.Streams.Stream_Element_Offset;
@@ -87,13 +81,48 @@ procedure Target.Driver is
    Session_MaxCmdSN  : A0B.Types.Unsigned_32 := 0;
    Connection_StatSN : A0B.Types.Unsigned_32 := 0;
 
+   type State_Kind is (Receive_PDU, Data_In);
+
+   State : State_Kind := Receive_PDU;
+
+   type PDU is record
+      Header_Storage : System.Address;
+      Data_Storage   : System.Address;
+      Data_Length    : A0B.Types.Unsigned_32;
+   end record;
+
+   Current_PDU : PDU;
+
+   ------------------
+   -- Dispatch_PDU --
+   ------------------
+
+   procedure Dispatch_PDU is
+      Header : iSCSI.PDUs.Basic_Header_Segment
+        with Import, Address => Current_PDU.Header_Storage;
+
+   begin
+      if Header.Opcode = iSCSI.Types.SCSI_Command then
+         Process_SCSI_Command;
+
+      elsif Header.Opcode = iSCSI.Types.Login_Request then
+         Process_Login_Request;
+
+      elsif Header.Opcode = iSCSI.Types.Text_Request then
+         raise Program_Error;
+
+      else
+         raise Program_Error;
+      end if;
+   end Dispatch_PDU;
+
    ---------------------------
    -- Process_Login_Request --
    ---------------------------
 
    procedure Process_Login_Request is
       Header : iSCSI.PDUs.Login_Request_Header
-        with Import, Address => Header_Storage'Address;
+        with Import, Address => Current_PDU.Header_Storage;
       Parser : iSCSI.Text.Parser;
 
    begin
@@ -118,7 +147,7 @@ procedure Target.Driver is
         (Parser,
          Data_Storage'Address,
          System.Storage_Elements.Storage_Offset
-           (Basic_Header.DataSegmentLength));
+           (Header.DataSegmentLength));
 
       while iSCSI.Text.Forward (Parser) loop
          Ada.Text_IO.Put (''');
@@ -131,7 +160,7 @@ procedure Target.Driver is
       end loop;
 
       iSCSI.Target.Login.Process
-        (Header_Address        => Header_Storage'Address,
+        (Header_Address        => Current_PDU.Header_Storage,
          Request_Data_Address  => Data_Storage'Address,
          Response_Data_Address => Response_Storage'Address,
          Response_Data_Length  => Response_Length);
@@ -143,7 +172,7 @@ procedure Target.Driver is
 
       declare
          Request_Header : iSCSI.PDUs.Login_Request_Header
-           with Import, Address => Header_Storage'Address;
+           with Import, Address => Current_PDU.Header_Storage;
 
          Header       : iSCSI.PDUs.Login_Response_Header :=
            (Transit            => True,
@@ -190,7 +219,7 @@ procedure Target.Driver is
 
    procedure Process_SCSI_Command is
       Request_Header : iSCSI.PDUs.SCSI_Command_Header
-        with Import, Address => Header_Storage'Address;
+        with Import, Address => Current_PDU.Header_Storage;
 
       Command_Initiator_Task_Tag            : A0B.Types.Unsigned_32;
       Command_Expected_Data_Transfer_Length : A0B.Types.Unsigned_32;
@@ -355,6 +384,79 @@ procedure Target.Driver is
       end;
    end Process_SCSI_Command;
 
+   -----------------
+   -- Receive_PDU --
+   -----------------
+
+   procedure Receive_PDU is
+   begin
+      GNAT.Sockets.Receive_Socket
+        (Socket => Accept_Socket,
+         Item   => Request_Header_Storage,
+         Last   => Last);
+
+      if Last /= Request_Header_Storage'Last then
+         raise Program_Error;
+      end if;
+
+      Current_PDU.Header_Storage := Request_Header_Storage'Address;
+
+      declare
+         Header : iSCSI.PDUs.Basic_Header_Segment
+           with Import, Address => Current_PDU.Header_Storage;
+
+      begin
+         Put_Line ("---------------------------------------------------------");
+         Put_Line
+           ("iSCSI OpCode " & iSCSI.Types.Opcode_Type'Image (Header.Opcode));
+         Put_Line
+           ("iSCSI AHSLen "
+            & A0B.Types.Unsigned_8'Image (Header.TotalAHSLength));
+         Put_Line
+           ("iSCSI DSLen  "
+            & A0B.Types.Unsigned_24'Image (Header.DataSegmentLength));
+
+         if Header.TotalAHSLength /= 0 then
+            raise Program_Error;
+         end if;
+
+         if Header.DataSegmentLength /= 0 then
+            GNAT.Sockets.Receive_Socket
+              (Socket => Accept_Socket,
+               Item   => Data_Storage,
+               Last   => Data_Last);
+
+            if (Data_Last + 1)
+                 /= Adjusted_Size
+                   (Ada.Streams.Stream_Element_Offset
+                      (Header.DataSegmentLength))
+            then
+               raise Program_Error;
+            end if;
+
+            Current_PDU.Data_Storage := Data_Storage'Address;
+            Current_PDU.Data_Length  :=
+              A0B.Types.Unsigned_32 (Header.DataSegmentLength);
+
+         else
+            Current_PDU.Data_Storage := System.Null_Address;
+            Current_PDU.Data_Length  := 0;
+         end if;
+      end;
+   end Receive_PDU;
+
+   ---------------
+   -- To_String --
+   ---------------
+
+   function To_String (Item : iSCSI.Text.UTF8_String) return String is
+      Result : constant String (1 .. Item'Length)
+        with Import, Address => Item'Address;
+
+   begin
+      return Result;
+   end To_String;
+
 begin
    GNAT.Sockets.Create_Socket (Listen_Socket);
    GNAT.Sockets.Set_Socket_Option
@@ -372,55 +474,13 @@ begin
    GNAT.Sockets.Close_Socket (Listen_Socket);
 
    loop
-      GNAT.Sockets.Receive_Socket
-        (Socket => Accept_Socket,
-         Item   => Header_Storage,
-         Last   => Last);
+      case State is
+         when Receive_PDU =>
+            Receive_PDU;
+            Dispatch_PDU;
 
-      if Last /= Header_Storage'Last then
-         raise Program_Error;
-      end if;
-
-      Put_Line ("---------------------------------------------------------");
-      Put_Line
-        ("iSCSI OpCode " & iSCSI.Types.Opcode_Type'Image (Basic_Header.Opcode));
-      Put_Line
-        ("iSCSI AHSLen "
-         & A0B.Types.Unsigned_8'Image (Basic_Header.TotalAHSLength));
-      Put_Line
-        ("iSCSI DSLen  "
-         & A0B.Types.Unsigned_24'Image (Basic_Header.DataSegmentLength));
-
-      if Basic_Header.TotalAHSLength /= 0 then
-         raise Program_Error;
-      end if;
-
-      if Basic_Header.DataSegmentLength /= 0 then
-         GNAT.Sockets.Receive_Socket
-           (Socket => Accept_Socket,
-            Item   => Data_Storage,
-            Last   => Data_Last);
-
-         if (Data_Last + 1)
-           /= Adjusted_Size
-               (Ada.Streams.Stream_Element_Offset
-                 (Basic_Header.DataSegmentLength))
-         then
+         when Data_In =>
             raise Program_Error;
-         end if;
-      end if;
-
-      if Basic_Header.Opcode = iSCSI.Types.SCSI_Command then
-         Process_SCSI_Command;
-
-      elsif Basic_Header.Opcode = iSCSI.Types.Login_Request then
-         Process_Login_Request;
-
-      elsif Basic_Header.Opcode = iSCSI.Types.Text_Request then
-         raise Program_Error;
-
-      else
-         raise Program_Error;
-      end if;
+      end case;
    end loop;
 end Target.Driver;
