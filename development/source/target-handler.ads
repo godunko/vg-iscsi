@@ -25,6 +25,14 @@ package Target.Handler is
 
    function Sense return SCSI.SAM5.Sense_Data;
 
+   function Write_Data_Length return A0B.Types.Unsigned_64;
+   --  Expected amount of data to be data-out by the command.
+
+   function Read_Data_Length return A0B.Types.Unsigned_64;
+   --  Expected maximum amount of data to be data-in by the command. Actual
+   --  transferred amount might be less even when command is executed
+   --  successfully.
+
 private
 
    type Length_Check_Rule is (Default, USB_MSC_BOOT, iSCSI);

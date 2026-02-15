@@ -114,8 +114,10 @@ package body Target.Handler is
      (None, Inquiry, Mode_Sense, Read, Read_Capacity, Report_Luns);
 
    type Operation_Information (Kind : Operation_Kind := None) is record
-      Status : SCSI.SAM5.STATUS;
-      Sense  : SCSI.SAM5.Sense_Data;
+      Status            : SCSI.SAM5.STATUS;
+      Sense             : SCSI.SAM5.Sense_Data;
+      Write_Data_Length : A0B.Types.Unsigned_64;
+      Read_Data_Length  : A0B.Types.Unsigned_64;
 
       case Kind is
          when None =>
@@ -824,7 +826,11 @@ package body Target.Handler is
       if Descriptor.EVPD then
          if VPD (Descriptor.PAGE_CODE) = null then
             Operation :=
-              (None, SCSI.SAM5.CHECK_CONDITION, SCSI.SPC5.INVALID_FIELD_IN_CDB);
+              (Kind              => None,
+               Status            => SCSI.SAM5.CHECK_CONDITION,
+               Sense             => SCSI.SPC5.INVALID_FIELD_IN_CDB,
+               Write_Data_Length => 0,
+               Read_Data_Length  => 0);
 
             return;
          end if;
@@ -833,7 +839,14 @@ package body Target.Handler is
       --     Operation := (Inquiry, Descriptor);
       end if;
 
-      Operation := (Inquiry, SCSI.SAM5.GOOD, SCSI.SPC5.NO_SENSE, Descriptor);
+      Operation :=
+        (Kind              => Inquiry,
+         Status            => SCSI.SAM5.GOOD,
+         Sense             => SCSI.SPC5.NO_SENSE,
+         Write_Data_Length => 0,
+         Read_Data_Length  =>
+           A0B.Types.Unsigned_64 (Descriptor.ALLOCATION_LENGTH),
+         Inquiry           => Descriptor);
    end Execute_INQUIRY;
 
    ------------------------
@@ -853,12 +866,23 @@ package body Target.Handler is
         or Descriptor.PAGE_CODE /= SCSI.SPC5.All_Pages
       then
          Operation :=
-           (None, SCSI.SAM5.CHECK_CONDITION, SCSI.SPC5.INVALID_FIELD_IN_CDB);
+           (Kind              => None,
+            Status            => SCSI.SAM5.CHECK_CONDITION,
+            Sense             => SCSI.SPC5.INVALID_FIELD_IN_CDB,
+            Write_Data_Length => 0,
+            Read_Data_Length  => 0);
 
          return;
       end if;
 
-      Operation := (Mode_Sense, SCSI.SAM5.GOOD, SCSI.SPC5.NO_SENSE, Descriptor);
+      Operation :=
+        (Kind              => Mode_Sense,
+         Status            => SCSI.SAM5.GOOD,
+         Sense             => SCSI.SPC5.NO_SENSE,
+         Write_Data_Length => 0,
+         Read_Data_Length  =>
+           A0B.Types.Unsigned_64 (Descriptor.ALLOCATION_LENGTH),
+         Mode_Sense        => Descriptor);
    end Execute_MODE_SENSE;
 
    ------------------
@@ -868,7 +892,14 @@ package body Target.Handler is
    procedure Execute_READ
      (Descriptor : SCSI.Commands.SBC.READ_Command_Descriptor) is
    begin
-      Operation := (Read, SCSI.SAM5.GOOD, SCSI.SPC5.NO_SENSE, Descriptor);
+      Operation :=
+        (Kind              => Read,
+         Status            => SCSI.SAM5.GOOD,
+         Sense             => SCSI.SPC5.NO_SENSE,
+         Write_Data_Length => 0,
+         Read_Data_Length  =>
+           Target.File.Data_Length (Descriptor.TRANSFER_LENGTH),
+         Read              => Descriptor);
    end Execute_READ;
 
    ---------------------------
@@ -879,7 +910,13 @@ package body Target.Handler is
      (Descriptor : SCSI.Commands.SBC.READ_CAPACITY_Command_Descriptor) is
    begin
       Operation :=
-        (Read_Capacity, SCSI.SAM5.GOOD, SCSI.SPC5.NO_SENSE, Descriptor);
+        (Kind              => Read_Capacity,
+         Status            => SCSI.SAM5.GOOD,
+         Sense             => SCSI.SPC5.NO_SENSE,
+         Write_Data_Length => 0,
+         Read_Data_Length  =>
+           A0B.Types.Unsigned_64 (Descriptor.ALLOCATION_LENGTH),
+         Read_Capacity     => Descriptor);
    end Execute_READ_CAPACITY;
 
    -------------------------
@@ -897,7 +934,13 @@ package body Target.Handler is
       end if;
 
       Operation :=
-        (Report_Luns, SCSI.SAM5.GOOD, SCSI.SPC5.NO_SENSE, Descriptor);
+        (Kind              => Report_Luns,
+         Status            => SCSI.SAM5.GOOD,
+         Sense             => SCSI.SPC5.NO_SENSE,
+         Write_Data_Length => 0,
+         Read_Data_Length  =>
+           A0B.Types.Unsigned_64 (Descriptor.ALLOCATION_LENGTH),
+         Report_Luns       => Descriptor);
    end Execute_REPORT_LUNS;
 
    -----------------------------
@@ -910,7 +953,12 @@ package body Target.Handler is
       pragma Unreferenced (Descriptor);
 
    begin
-      Operation := (None, SCSI.SAM5.GOOD, SCSI.SPC5.NO_SENSE);
+      Operation :=
+        (Kind              => None,
+         Status            => SCSI.SAM5.GOOD,
+         Sense             => SCSI.SPC5.NO_SENSE,
+         Write_Data_Length => 0,
+         Read_Data_Length  => 0);
    end Execute_TEST_UNIT_READY;
 
    --------------------------------------------
@@ -920,9 +968,11 @@ package body Target.Handler is
    procedure Failure_INVALID_COMMAND_OPERATION_CODE is
    begin
       Operation :=
-        (None,
-         SCSI.SAM5.CHECK_CONDITION,
-         SCSI.SPC5.INVALID_COMMAND_OPERATION_CODE);
+        (Kind              => None,
+         Status            => SCSI.SAM5.CHECK_CONDITION,
+         Sense             => SCSI.SPC5.INVALID_COMMAND_OPERATION_CODE,
+         Write_Data_Length => 0,
+         Read_Data_Length  => 0);
    end Failure_INVALID_COMMAND_OPERATION_CODE;
 
    ----------------------------------
@@ -932,7 +982,11 @@ package body Target.Handler is
    function Failure_INVALID_FIELD_IN_CDB return Boolean is
    begin
       Operation :=
-        (None, SCSI.SAM5.CHECK_CONDITION, SCSI.SPC5.INVALID_FIELD_IN_CDB);
+        (Kind              => None,
+         Status            => SCSI.SAM5.CHECK_CONDITION,
+         Sense             => SCSI.SPC5.INVALID_FIELD_IN_CDB,
+         Write_Data_Length => 0,
+         Read_Data_Length  => 0);
 
       return False;
    end Failure_INVALID_FIELD_IN_CDB;
@@ -1088,6 +1142,15 @@ package body Target.Handler is
       end;
    end Process_Command;
 
+   ----------------------
+   -- Read_Data_Length --
+   ----------------------
+
+   function Read_Data_Length return A0B.Types.Unsigned_64 is
+   begin
+      return Operation.Read_Data_Length;
+   end Read_Data_Length;
+
    -----------
    -- Sense --
    -----------
@@ -1105,5 +1168,14 @@ package body Target.Handler is
    begin
       return Operation.Status;
    end Status;
+
+   -----------------------
+   -- Write_Data_Length --
+   -----------------------
+
+   function Write_Data_Length return A0B.Types.Unsigned_64 is
+   begin
+      return Operation.Write_Data_Length;
+   end Write_Data_Length;
 
 end Target.Handler;

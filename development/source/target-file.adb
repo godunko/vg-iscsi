@@ -15,6 +15,19 @@ package body Target.File is
 
    procedure Open_File;
 
+   -----------------
+   -- Data_Length --
+   -----------------
+
+   function Data_Length
+     (Transfer_Length : A0B.Types.Unsigned_32) return A0B.Types.Unsigned_64
+   is
+      use type A0B.Types.Unsigned_64;
+
+   begin
+      return Block_Length * A0B.Types.Unsigned_64 (Transfer_Length);
+   end Data_Length;
+
    --------------
    -- Last_LBA --
    --------------

@@ -14,6 +14,9 @@ package Target.File is
 
    function Last_LBA return A0B.Types.Unsigned_64;
 
+   function Data_Length
+     (Transfer_Length : A0B.Types.Unsigned_32) return A0B.Types.Unsigned_64;
+
    procedure Read
      (Descriptor      : SCSI.Commands.SBC.READ_Command_Descriptor;
       Storage_Address : System.Address;

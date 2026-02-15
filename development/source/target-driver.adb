@@ -39,6 +39,10 @@ procedure Target.Driver is
 
    procedure Receive_PDU;
 
+   procedure Send_Data_In;
+
+   procedure Send_Response;
+
    procedure Process_Login_Request;
 
    procedure Process_SCSI_Command;
@@ -73,15 +77,13 @@ procedure Target.Driver is
    Data_Last      : Ada.Streams.Stream_Element_Offset;
 
    Response_Storage : Ada.Streams.Stream_Element_Array (0 .. 256*1024 -1); --  65_535);
-   Response_Length  : A0B.Types.Unsigned_32;
 
-   --  Command_DataSN           : A0B.Types.Unsigned_32 := 0;
    Session_CmdSN     : A0B.Types.Unsigned_32 := 0;
    Session_ExpCmdSN  : A0B.Types.Unsigned_32 := 0;
    Session_MaxCmdSN  : A0B.Types.Unsigned_32 := 0;
    Connection_StatSN : A0B.Types.Unsigned_32 := 0;
 
-   type State_Kind is (Receive_PDU, Data_In);
+   type State_Kind is (Receive_PDU, Data_In, Response);
 
    State : State_Kind := Receive_PDU;
 
@@ -92,11 +94,15 @@ procedure Target.Driver is
    end record;
 
    type Command is record
+      Immediate                           : Boolean;
       Write                               : Boolean;
       Read                                : Boolean;
       Initiator_Task_Tag                  : A0B.Types.Unsigned_32;
       Write_Expected_Data_Transfer_Length : A0B.Types.Unsigned_32;
       Read_Expected_Data_Transfer_Length  : A0B.Types.Unsigned_32;
+      Write_Data_Transfer_Length          : A0B.Types.Unsigned_32;
+      Read_Data_Transfer_Length           : A0B.Types.Unsigned_32;
+      DataSN                              : A0B.Types.Unsigned_32;
    end record;
 
    Current_PDU     : PDU;
@@ -130,9 +136,10 @@ procedure Target.Driver is
    ---------------------------
 
    procedure Process_Login_Request is
-      Header : iSCSI.PDUs.Login_Request_Header
+      Header          : iSCSI.PDUs.Login_Request_Header
         with Import, Address => Current_PDU.Header_Storage;
-      Parser : iSCSI.Text.Parser;
+      Parser          : iSCSI.Text.Parser;
+      Response_Length : A0B.Types.Unsigned_32;
 
    begin
       Put_Line ("  Immediate          : " & Header.Immediate'Image);
@@ -227,6 +234,8 @@ procedure Target.Driver is
    --------------------------
 
    procedure Process_SCSI_Command is
+      use type SCSI.SAM5.STATUS;
+
       Request_Header : iSCSI.PDUs.SCSI_Command_Header
         with Import, Address => Current_PDU.Header_Storage;
 
@@ -243,9 +252,14 @@ procedure Target.Driver is
       Put_Line ("iSCSI ExpStatSN" & Request_Header.ExpStatSN'Image);
       Put_Line ("iSCSI CDB " & Request_Header.SCSI_Command_Descriptor_Block'Image);
 
-      Current_Command.Write := Request_Header.Write;
-      Current_Command.Read  := Request_Header.Read;
+      Current_Command.Immediate          := Request_Header.Immediate;
       Current_Command.Initiator_Task_Tag := Request_Header.Initiator_Task_Tag;
+
+      Current_Command.Write                      := Request_Header.Write;
+      Current_Command.Read                       := Request_Header.Read;
+      Current_Command.Write_Data_Transfer_Length := 0;
+      Current_Command.Read_Data_Transfer_Length  := 0;
+      Current_Command.DataSN                     := 0;
 
       if Request_Header.Write then
          Current_Command.Write_Expected_Data_Transfer_Length :=
@@ -269,146 +283,18 @@ procedure Target.Driver is
         (A0B.Types.Arrays.Unsigned_8_Array
            (Request_Header.SCSI_Command_Descriptor_Block));
 
-      if Target.Handler.Has_Data_In then
-         Target.Handler.Data_In (Response_Storage'Address, Response_Length);
+      if Target.Handler.Status /= SCSI.SAM5.GOOD then
+         State := Response;
 
-         declare
-            Header       : iSCSI.PDUs.SCSI_Data_In_Header :=
-              (Opcode              => <>,
-               Final               => True,
-               Acknowledge         => False,
-               Residual_Overflow   => False,
-               Residual_Underflow  => False,
-               Status_Flag         => False,  --  Send in SCSI Response
-               Status              => <>,     --  Send in SCSI Response
-               TotalAHSLength      => 0,
-               DataSegmentLength   => A0B.Types.Unsigned_24 (Response_Length),
-               Logical_Unit_Number => 0,
-               Initiator_Task_Tag  => Current_Command.Initiator_Task_Tag,
-               Target_Transfer_Tag => 0,
-               StatSN              => Connection_StatSN,
-               ExpCmdSN            => Session_ExpCmdSN,
-               MaxCmdSN            => Session_MaxCmdSN,
-               DataSN              => 0,  --  DataSN,
-               Buffer_Offset       => 0,
-               Residual_Count      => 0,  --  Send in SCSI Response
-               others              => <>);
-            Header_Storage : Ada.Streams.Stream_Element_Array (0 .. 47)
-              with Import, Address => Header'Address;
+      elsif Current_Command.Write then
+         raise Program_Error;
 
-            Data           : Ada.Streams.Stream_Element_Array
-              (0 .. Adjusted_Size (Ada.Streams.Stream_Element_Offset (Response_Length)) - 1)
-              with Import, Address => Response_Storage'Address;
-
-         begin
-            --  DataSN := @ + 1;
-
-            Put_Line ("Send Data-In ...");
-            GNAT.Sockets.Send_Socket
-              (Socket => Accept_Socket,
-               Item   => Header_Storage,
-               Last   => Last);
-            Put_Line (Last'Image);
-            GNAT.Sockets.Send_Socket
-              (Socket => Accept_Socket,
-               Item   => Data,
-               Last   => Last);
-            Put_Line (Last'Image);
-            Put_Line ("  ... done.");
-         end;
+      elsif Current_Command.Read then
+         State := Data_In;
 
       else
-         Response_Length := 0;
+         State := Response;
       end if;
-
-      if not Request_Header.Immediate then
-         Session_ExpCmdSN := @ + 1;
-         Session_MaxCmdSN := @ + 1;
-         Put_Line ("   ... ExpCmdSN/MaxCmdSN incremented");
-      end if;
-
-      declare
-         use type SCSI.SAM5.STATUS;
-
-         Header       : iSCSI.PDUs.SCSI_Response_Header :=
-           (Opcode                                => <>,
-            Bidirectional_Read_Residual_Overflow  => False,
-            Bidirectional_Read_Residual_Underflow => False,
-            Residual_Overflow                     => False,
-            Residual_Underflow                    =>
-              Current_Command.Read_Expected_Data_Transfer_Length
-                 > Response_Length,
-            Response                              => 0,
-            Status                                => Target.Handler.Status,
-            TotalAHSLength                        => 0,
-            DataSegmentLength                     => 0,
-            Initiator_Task_Tag                    =>
-              Current_Command.Initiator_Task_Tag,
-            SNACK_Tag                             => 0,
-            StatSN                                => Connection_StatSN,
-            ExpCmdSN                              => Session_ExpCmdSN,
-            MaxCmdSN                              => Session_MaxCmdSN,
-            ExpDataSN                             => 0,
-            Bidirectional_Read_Residual_Count     => 0,
-            Residual_Count                        =>
-              Current_Command.Read_Expected_Data_Transfer_Length
-                - Response_Length,
-            others                                => <>);
-         Header_Storage : Ada.Streams.Stream_Element_Array (0 .. 47)
-           with Import, Address => Header'Address;
-
-         Data           : Ada.Streams.Stream_Element_Array
-          (0 .. Adjusted_Size (18 + 2) - 1)
-             with Import, Address => Response_Storage'Address;
-         SenseLength    : A0B.Types.Big_Endian.Unsigned_16
-           with Import, Address => Data (0)'Address;
-         SenseData      : SCSI.SPC5.Sense.Fixed_Format
-           with Import, Address => Data (2)'Address;
-
-      begin
-         Connection_StatSN := @ + 1;
-
-         if Header.Status /= SCSI.SAM5.GOOD then
-            SenseLength := (Value => 18);
-
-            SenseData :=
-              (VALID                           => False,
-               RESPONSE_CODE                   => <>,
-               FILEMARK                        => False,
-               EOM                             => False,
-               ILI                             => False,
-               SDAT_OVFL                       => False,
-               SENSE_KEY                       => Target.Handler.Sense.SENSE_KEY,
-               INFORMATION                     => (Value => 0),
-               ADDITIONAL_SENSE_LENGTH         => <>,
-               COMMAND_SPECIFIC_INFORMATION    => (Value => 0),
-               ADDITIONAL_SENSE_CODE           =>
-                 Target.Handler.Sense.ADDITIONAL_SENSE_CODE,
-               ADDITIONAL_SENSE_CODE_QUALIFIER =>
-                 Target.Handler.Sense.ADDITIONAL_SENSE_CODE_QUALIFIER,
-               FIELD_REPLACEABLE_UNIT_CODE     => 0,
-               others                          => <>);
-
-            Header.DataSegmentLength := Data'Length;
-         end if;
-
-         Put_Line ("Send SCSI Response ...");
-         GNAT.Sockets.Send_Socket
-           (Socket => Accept_Socket,
-            Item   => Header_Storage,
-            Last   => Last);
-         Put_Line (Last'Image);
-
-         if Header.Status /= SCSI.SAM5.GOOD then
-            GNAT.Sockets.Send_Socket
-              (Socket => Accept_Socket,
-               Item   => Data,
-               Last   => Last);
-            Put_Line (Last'Image);
-         end if;
-
-         Put_Line ("  ... done.");
-      end;
    end Process_SCSI_Command;
 
    -----------------
@@ -478,6 +364,299 @@ procedure Target.Driver is
       end;
    end Receive_PDU;
 
+   ------------------
+   -- Send_Data_In --
+   ------------------
+
+   procedure Send_Data_In is
+      Data_Length : A0B.Types.Unsigned_32;
+
+   begin
+      Target.Handler.Data_In (Response_Storage'Address, Data_Length);
+
+      Current_Command.Read_Data_Transfer_Length := @ + Data_Length;
+
+      declare
+         Header       : iSCSI.PDUs.SCSI_Data_In_Header :=
+           (Opcode              => <>,
+            Final               => True,
+            Acknowledge         => False,
+            Residual_Overflow   => False,
+            Residual_Underflow  => False,
+            Status_Flag         => False,  --  Send in SCSI Response
+            Status              => <>,     --  Send in SCSI Response
+            TotalAHSLength      => 0,
+            DataSegmentLength   => A0B.Types.Unsigned_24 (Data_Length),
+            Logical_Unit_Number => 0,
+            Initiator_Task_Tag  => Current_Command.Initiator_Task_Tag,
+            Target_Transfer_Tag => 0,
+            StatSN              => Connection_StatSN,
+            ExpCmdSN            => Session_ExpCmdSN,
+            MaxCmdSN            => Session_MaxCmdSN,
+            DataSN              => Current_Command.DataSN,
+            Buffer_Offset       => 0,
+            Residual_Count      => 0,  --  Send in SCSI Response
+            others              => <>);
+         pragma Warnings (Off, "overlay changes scalar storage order");
+         Header_Storage : Ada.Streams.Stream_Element_Array (0 .. 47)
+           with Import, Address => Header'Address;
+         pragma Warnings (On, "overlay changes scalar storage order");
+
+         Data           : Ada.Streams.Stream_Element_Array
+           (0 .. Adjusted_Size (Ada.Streams.Stream_Element_Offset (Data_Length)) - 1)
+           with Import, Address => Response_Storage'Address;
+
+      begin
+         Current_Command.DataSN := @ + 1;
+
+         Put_Line ("Send Data-In ..." & Data_Length'Image);
+         Put_Line (Header'Image);
+         Put_Line (Data'Image);
+         GNAT.Sockets.Send_Socket
+           (Socket => Accept_Socket,
+            Item   => Header_Storage,
+            Last   => Last);
+         Put_Line (Last'Image);
+         GNAT.Sockets.Send_Socket
+           (Socket => Accept_Socket,
+            Item   => Data,
+            Last   => Last);
+         Put_Line (Last'Image);
+         Put_Line ("  ... done.");
+      end;
+
+      State := Response;
+   end Send_Data_In;
+
+   -------------------
+   -- Send_Response --
+   -------------------
+
+   procedure Send_Response is
+   begin
+      if not Current_Command.Immediate then
+         Session_ExpCmdSN := @ + 1;
+         Session_MaxCmdSN := @ + 1;
+         Put_Line ("   ... ExpCmdSN/MaxCmdSN incremented");
+      end if;
+
+      declare
+         use type SCSI.SAM5.STATUS;
+
+         function Bidirectional_Read_Residual_Overflow return Boolean;
+
+         function Bidirectional_Read_Residual_Underflow return Boolean;
+
+         function Residual_Overflow return Boolean;
+
+         function Residual_Underflow return Boolean;
+
+         function Bidirectional_Read_Residual_Count
+           return A0B.Types.Unsigned_32;
+
+         function Residual_Count return A0B.Types.Unsigned_32;
+
+         ---------------------------------------
+         -- Bidirectional_Read_Residual_Count --
+         ---------------------------------------
+
+         function Bidirectional_Read_Residual_Count
+           return A0B.Types.Unsigned_32 is
+         begin
+            if Current_Command.Write and Current_Command.Read then
+               raise Program_Error;
+
+            else
+               return 0;
+            end if;
+         end Bidirectional_Read_Residual_Count;
+
+         ------------------------------------------
+         -- Bidirectional_Read_Residual_Overflow --
+         ------------------------------------------
+
+         function Bidirectional_Read_Residual_Overflow return Boolean is
+         begin
+            if Current_Command.Write and Current_Command.Read then
+               raise Program_Error;
+
+            else
+               return False;
+            end if;
+         end Bidirectional_Read_Residual_Overflow;
+
+         -------------------------------------------
+         -- Bidirectional_Read_Residual_Underflow --
+         -------------------------------------------
+
+         function Bidirectional_Read_Residual_Underflow return Boolean is
+         begin
+            if Current_Command.Write and Current_Command.Read then
+               raise Program_Error;
+
+            else
+               return False;
+            end if;
+         end Bidirectional_Read_Residual_Underflow;
+
+         --------------------
+         -- Residual_Count --
+         --------------------
+
+         function Residual_Count return A0B.Types.Unsigned_32 is
+         begin
+            if Current_Command.Write then
+               raise Program_Error;
+
+            elsif Current_Command.Read then
+               if Current_Command.Read_Data_Transfer_Length
+                 = Current_Command.Read_Expected_Data_Transfer_Length
+               then
+                  return 0;
+
+               elsif Current_Command.Read_Data_Transfer_Length
+                 < Current_Command.Read_Expected_Data_Transfer_Length
+               then
+                  return
+                    Current_Command.Read_Expected_Data_Transfer_Length
+                      - Current_Command.Read_Data_Transfer_Length;
+
+               else
+                  return
+                    Current_Command.Read_Data_Transfer_Length
+                      - Current_Command.Read_Expected_Data_Transfer_Length;
+               end if;
+
+            else
+               return 0;
+            end if;
+         end Residual_Count;
+
+         -----------------------
+         -- Residual_Overflow --
+         -----------------------
+
+         function Residual_Overflow return Boolean is
+         begin
+            if Current_Command.Write then
+               raise Program_Error;
+
+            elsif Current_Command.Read then
+               return
+                 Current_Command.Read_Data_Transfer_Length
+                   > Current_Command.Read_Expected_Data_Transfer_Length;
+
+            else
+               return False;
+            end if;
+         end Residual_Overflow;
+
+         ------------------------
+         -- Residual_Underflow --
+         ------------------------
+
+         function Residual_Underflow return Boolean is
+         begin
+            if Current_Command.Write then
+               raise Program_Error;
+
+            elsif Current_Command.Read then
+               return
+                 Current_Command.Read_Data_Transfer_Length
+                   < Current_Command.Read_Expected_Data_Transfer_Length;
+
+            else
+               return False;
+            end if;
+         end Residual_Underflow;
+
+         Header       : iSCSI.PDUs.SCSI_Response_Header :=
+           (Opcode                                => <>,
+            Bidirectional_Read_Residual_Overflow  =>
+              Bidirectional_Read_Residual_Overflow,
+            Bidirectional_Read_Residual_Underflow =>
+              Bidirectional_Read_Residual_Underflow,
+            Residual_Overflow                     => Residual_Overflow,
+            Residual_Underflow                    => Residual_Underflow,
+            Response                              => 0,
+            Status                                => Target.Handler.Status,
+            TotalAHSLength                        => 0,
+            DataSegmentLength                     => 0,
+            Initiator_Task_Tag                    =>
+              Current_Command.Initiator_Task_Tag,
+            SNACK_Tag                             => 0,
+            StatSN                                => Connection_StatSN,
+            ExpCmdSN                              => Session_ExpCmdSN,
+            MaxCmdSN                              => Session_MaxCmdSN,
+            ExpDataSN                             => 0,
+            Bidirectional_Read_Residual_Count     =>
+              Bidirectional_Read_Residual_Count,
+            Residual_Count                        => Residual_Count,
+            others                                => <>);
+         pragma Warnings (Off, "overlay changes scalar storage order");
+         Header_Storage : Ada.Streams.Stream_Element_Array (0 .. 47)
+           with Import, Address => Header'Address;
+         pragma Warnings (On, "overlay changes scalar storage order");
+
+         Data           : Ada.Streams.Stream_Element_Array
+          (0 .. Adjusted_Size (18 + 2) - 1)
+             with Import, Address => Response_Storage'Address;
+         pragma Warnings (Off, "overlay changes scalar storage order");
+         SenseLength    : A0B.Types.Big_Endian.Unsigned_16
+           with Import, Address => Data (0)'Address;
+         pragma Warnings (On, "overlay changes scalar storage order");
+         SenseData      : SCSI.SPC5.Sense.Fixed_Format
+           with Import, Address => Data (2)'Address;
+
+      begin
+         Connection_StatSN := @ + 1;
+
+         if Header.Status /= SCSI.SAM5.GOOD then
+            SenseLength := (Value => 18);
+
+            SenseData :=
+              (VALID                           => False,
+               RESPONSE_CODE                   => <>,
+               FILEMARK                        => False,
+               EOM                             => False,
+               ILI                             => False,
+               SDAT_OVFL                       => False,
+               SENSE_KEY                       => Target.Handler.Sense.SENSE_KEY,
+               INFORMATION                     => (Value => 0),
+               ADDITIONAL_SENSE_LENGTH         => <>,
+               COMMAND_SPECIFIC_INFORMATION    => (Value => 0),
+               ADDITIONAL_SENSE_CODE           =>
+                 Target.Handler.Sense.ADDITIONAL_SENSE_CODE,
+               ADDITIONAL_SENSE_CODE_QUALIFIER =>
+                 Target.Handler.Sense.ADDITIONAL_SENSE_CODE_QUALIFIER,
+               FIELD_REPLACEABLE_UNIT_CODE     => 0,
+               others                          => <>);
+
+            Header.DataSegmentLength := Data'Length;
+         end if;
+
+         Put_Line ("Send SCSI Response ...");
+         Put_Line (Header'Image);
+         GNAT.Sockets.Send_Socket
+           (Socket => Accept_Socket,
+            Item   => Header_Storage,
+            Last   => Last);
+         Put_Line (Last'Image);
+
+         if Header.Status /= SCSI.SAM5.GOOD then
+            GNAT.Sockets.Send_Socket
+              (Socket => Accept_Socket,
+               Item   => Data,
+               Last   => Last);
+            Put_Line (Last'Image);
+         end if;
+
+         Put_Line ("  ... done.");
+      end;
+
+      State := Receive_PDU;
+   end Send_Response;
+
    ---------------
    -- To_String --
    ---------------
@@ -513,7 +692,10 @@ begin
             Dispatch_PDU;
 
          when Data_In =>
-            raise Program_Error;
+            Send_Data_In;
+
+         when Response =>
+            Send_Response;
       end case;
    end loop;
 end Target.Driver;
