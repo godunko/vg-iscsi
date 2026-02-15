@@ -162,6 +162,56 @@ package iSCSI.PDUs with Pure is
       Reserved_47        at 47 range 0 .. 7;
    end record;
 
+   -----------------------
+   -- Ready To Transfer --
+   -----------------------
+
+   type Ready_To_Transfer_Header is record
+      Reserved_0_0_0               : A0B.Types.Reserved_1    := A0B.Types.Zero;
+      Reserved_0_1_1               : A0B.Types.Reserved_1    := A0B.Types.Zero;
+      Opcode                       : iSCSI.Types.Opcode_Type :=
+        iSCSI.Types.Ready_To_Transfer;
+      One_1_0_0                    : Boolean                 := True;
+      Reserved_1_1_7               : A0B.Types.Reserved_7    := A0B.Types.Zero;
+      Reserved_2                   : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_3                   : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      TotalAHSLength               : A0B.Types.Unsigned_8    := 0;
+      DataSegmentLength            : A0B.Types.Unsigned_24   := 0;
+      Logical_Unit_Number          : A0B.Types.Unsigned_64;
+      Initiator_Task_Tag           : A0B.Types.Unsigned_32;
+      Target_Transfer_Tag          : A0B.Types.Unsigned_32;
+      StatSN                       : A0B.Types.Unsigned_32;
+      ExpCmdSN                     : A0B.Types.Unsigned_32;
+      MaxCmdSN                     : A0B.Types.Unsigned_32;
+      R2TSN                        : A0B.Types.Unsigned_32;
+      Buffer_Offset                : A0B.Types.Unsigned_32;
+      Desired_Data_Transfer_Length : A0B.Types.Unsigned_32;
+   end record
+     with Size                 => Basic_Header_Segment_Length * Byte_Size,
+          Bit_Order            => System.High_Order_First,
+          Scalar_Storage_Order => System.High_Order_First;
+
+   for Ready_To_Transfer_Header use record
+      Reserved_0_0_0               at 0 range 0 .. 0;
+      Reserved_0_1_1               at 0 range 1 .. 1;
+      Opcode                       at 0 range 2 .. 7;
+      One_1_0_0                    at 1 range 0 .. 0;
+      Reserved_1_1_7               at 1 range 1 .. 7;
+      Reserved_2                   at 2 range 0 .. 7;
+      Reserved_3                   at 3 range 0 .. 7;
+      TotalAHSLength               at 4 range 0 .. 7;
+      DataSegmentLength            at 5 range 0 .. 23;
+      Logical_Unit_Number          at 8 range 0 .. 63;
+      Initiator_Task_Tag           at 16 range 0 .. 31;
+      Target_Transfer_Tag          at 20 range 0 .. 31;
+      StatSN                       at 24 range 0 .. 31;
+      ExpCmdSN                     at 28 range 0 .. 31;
+      MaxCmdSN                     at 32 range 0 .. 31;
+      R2TSN                        at 36 range 0 .. 31;
+      Buffer_Offset                at 40 range 0 .. 31;
+      Desired_Data_Transfer_Length at 44 range 0 .. 31;
+   end record;
+
    ------------------
    -- SCSI Command --
    ------------------

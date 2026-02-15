@@ -19,6 +19,11 @@ package Target.Handler is
      (Storage_Address : System.Address;
       Data_Length     : out A0B.Types.Unsigned_32);
 
+   procedure Data_Out
+     (Buffer_Offset   : A0B.Types.Unsigned_32;
+      Storage_Address : System.Address;
+      Data_Length     : A0B.Types.Unsigned_32);
+
    function Has_Data_In return Boolean;
 
    function Status return SCSI.SAM5.STATUS;

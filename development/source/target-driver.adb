@@ -43,9 +43,13 @@ procedure Target.Driver is
 
    procedure Send_Response;
 
+   procedure Send_Ready_To_Transfer;
+
    procedure Process_Login_Request;
 
    procedure Process_SCSI_Command;
+
+   procedure Process_SCSI_Data_Out;
 
    procedure Dispatch_PDU;
 
@@ -78,12 +82,13 @@ procedure Target.Driver is
 
    Response_Storage : Ada.Streams.Stream_Element_Array (0 .. 256*1024 -1); --  65_535);
 
-   Session_CmdSN     : A0B.Types.Unsigned_32 := 0;
+   --  Session_CmdSN     : A0B.Types.Unsigned_32 := 0;
    Session_ExpCmdSN  : A0B.Types.Unsigned_32 := 0;
    Session_MaxCmdSN  : A0B.Types.Unsigned_32 := 0;
    Connection_StatSN : A0B.Types.Unsigned_32 := 0;
 
-   type State_Kind is (Receive_PDU, Data_In, Response);
+   type State_Kind is
+     (Receive_PDU, Ready_To_Transfer, Data_Out, Data_In, Response);
 
    State : State_Kind := Receive_PDU;
 
@@ -94,6 +99,7 @@ procedure Target.Driver is
    end record;
 
    type Command is record
+      Logical_Unit_Number                 : A0B.Types.Unsigned_64;
       Immediate                           : Boolean;
       Write                               : Boolean;
       Read                                : Boolean;
@@ -103,6 +109,7 @@ procedure Target.Driver is
       Write_Data_Transfer_Length          : A0B.Types.Unsigned_32;
       Read_Data_Transfer_Length           : A0B.Types.Unsigned_32;
       DataSN                              : A0B.Types.Unsigned_32;
+      R2TSN                               : A0B.Types.Unsigned_32;
    end record;
 
    Current_PDU     : PDU;
@@ -125,6 +132,9 @@ procedure Target.Driver is
 
       elsif Header.Opcode = iSCSI.Types.Text_Request then
          raise Program_Error;
+
+      elsif Header.Opcode = iSCSI.Types.SCSI_Data_Out then
+         Process_SCSI_Data_Out;
 
       else
          raise Program_Error;
@@ -208,8 +218,10 @@ procedure Target.Driver is
             Status_Class       => 0,
             Status_Detail      => 0,
             others             => <>);
+         pragma Warnings (Off, "overlay changes scalar storage order");
          Header_Storage : Ada.Streams.Stream_Element_Array (0 .. 47)
            with Import, Address => Header'Address;
+         pragma Warnings (On, "overlay changes scalar storage order");
 
          Data           : Ada.Streams.Stream_Element_Array
            (0 .. Adjusted_Size (Ada.Streams.Stream_Element_Offset (Response_Length)) - 1)
@@ -252,14 +264,16 @@ procedure Target.Driver is
       Put_Line ("iSCSI ExpStatSN" & Request_Header.ExpStatSN'Image);
       Put_Line ("iSCSI CDB " & Request_Header.SCSI_Command_Descriptor_Block'Image);
 
-      Current_Command.Immediate          := Request_Header.Immediate;
-      Current_Command.Initiator_Task_Tag := Request_Header.Initiator_Task_Tag;
+      Current_Command.Logical_Unit_Number := Request_Header.Logical_Unit_Number;
+      Current_Command.Immediate           := Request_Header.Immediate;
+      Current_Command.Initiator_Task_Tag  := Request_Header.Initiator_Task_Tag;
 
       Current_Command.Write                      := Request_Header.Write;
       Current_Command.Read                       := Request_Header.Read;
       Current_Command.Write_Data_Transfer_Length := 0;
       Current_Command.Read_Data_Transfer_Length  := 0;
       Current_Command.DataSN                     := 0;
+      Current_Command.R2TSN                      := 0;
 
       if Request_Header.Write then
          Current_Command.Write_Expected_Data_Transfer_Length :=
@@ -268,6 +282,9 @@ procedure Target.Driver is
          if Request_Header.Read then
             --  XXX Process Bidirectional Read Expected Data Transfer Length AHS
             raise Program_Error;
+
+         else
+            Current_Command.Read_Expected_Data_Transfer_Length := 0;
          end if;
 
       elsif Request_Header.Read then
@@ -287,7 +304,7 @@ procedure Target.Driver is
          State := Response;
 
       elsif Current_Command.Write then
-         raise Program_Error;
+         State := Ready_To_Transfer;
 
       elsif Current_Command.Read then
          State := Data_In;
@@ -296,6 +313,36 @@ procedure Target.Driver is
          State := Response;
       end if;
    end Process_SCSI_Command;
+
+   ---------------------------
+   -- Process_SCSI_Data_Out --
+   ---------------------------
+
+   procedure Process_SCSI_Data_Out is
+      Header : iSCSI.PDUs.SCSI_Data_Out_Header
+        with Import, Address => Current_PDU.Header_Storage;
+
+   begin
+      Put_Line (Current_Command'Image);
+      Put_Line (Header'Image);
+
+      Target.Handler.Data_Out
+        (Buffer_Offset   => Header.Buffer_Offset,
+         Storage_Address => Current_PDU.Data_Storage,
+         Data_Length     => A0B.Types.Unsigned_32 (Header.DataSegmentLength));
+
+      Current_Command.Write_Data_Transfer_Length :=
+        @ + A0B.Types.Unsigned_32 (Header.DataSegmentLength);
+
+      if Current_Command.Write_Data_Transfer_Length
+        = Current_Command.Write_Expected_Data_Transfer_Length
+      then
+         State := Response;
+
+      else
+         State := Ready_To_Transfer;
+      end if;
+   end Process_SCSI_Data_Out;
 
    -----------------
    -- Receive_PDU --
@@ -428,6 +475,57 @@ procedure Target.Driver is
       State := Response;
    end Send_Data_In;
 
+   ----------------------------
+   -- Send_Ready_To_Transfer --
+   ----------------------------
+
+   procedure Send_Ready_To_Transfer is
+      Burst : constant := 8_192;
+
+   begin
+      Put_Line (Current_Command'Image);
+
+      declare
+         Header       : iSCSI.PDUs.Ready_To_Transfer_Header :=
+           (Opcode                       => <>,
+            TotalAHSLength               => <>,
+            DataSegmentLength            => <>,
+            Logical_Unit_Number          => Current_Command.Logical_Unit_Number,
+            Initiator_Task_Tag           => Current_Command.Initiator_Task_Tag,
+            Target_Transfer_Tag          => 0,
+            StatSN                       => Connection_StatSN,
+            ExpCmdSN                     => Session_ExpCmdSN,
+            MaxCmdSN                     => Session_MaxCmdSN,
+            R2TSN                        => Current_Command.R2TSN,
+            Buffer_Offset                =>
+              Current_Command.Write_Data_Transfer_Length,
+            Desired_Data_Transfer_Length =>
+              A0B.Types.Unsigned_32'Min
+                (Burst,
+                 Current_Command.Write_Expected_Data_Transfer_Length
+                   - Current_Command.Write_Data_Transfer_Length),
+            others                       => <>);
+         pragma Warnings (Off, "overlay changes scalar storage order");
+         Header_Storage : Ada.Streams.Stream_Element_Array (0 .. 47)
+           with Import, Address => Header'Address;
+         pragma Warnings (On, "overlay changes scalar storage order");
+
+      begin
+         Current_Command.R2TSN := @ + 1;
+
+         Put_Line ("Send R2T ...");
+         Put_Line (Header'Image);
+         GNAT.Sockets.Send_Socket
+           (Socket => Accept_Socket,
+            Item   => Header_Storage,
+            Last   => Last);
+         Put_Line (Last'Image);
+         Put_Line ("  ... done.");
+      end;
+
+      State := Data_Out;
+   end Send_Ready_To_Transfer;
+
    -------------------
    -- Send_Response --
    -------------------
@@ -506,7 +604,23 @@ procedure Target.Driver is
          function Residual_Count return A0B.Types.Unsigned_32 is
          begin
             if Current_Command.Write then
-               raise Program_Error;
+               if Current_Command.Write_Data_Transfer_Length
+                 = Current_Command.Write_Expected_Data_Transfer_Length
+               then
+                  return 0;
+
+               elsif Current_Command.Write_Data_Transfer_Length
+                 < Current_Command.Write_Expected_Data_Transfer_Length
+               then
+                  return
+                    Current_Command.Write_Expected_Data_Transfer_Length
+                      - Current_Command.Write_Data_Transfer_Length;
+
+               else
+                  return
+                    Current_Command.Write_Data_Transfer_Length
+                      - Current_Command.Write_Expected_Data_Transfer_Length;
+               end if;
 
             elsif Current_Command.Read then
                if Current_Command.Read_Data_Transfer_Length
@@ -539,7 +653,9 @@ procedure Target.Driver is
          function Residual_Overflow return Boolean is
          begin
             if Current_Command.Write then
-               raise Program_Error;
+               return
+                 Current_Command.Write_Data_Transfer_Length
+                   > Current_Command.Write_Expected_Data_Transfer_Length;
 
             elsif Current_Command.Read then
                return
@@ -558,7 +674,9 @@ procedure Target.Driver is
          function Residual_Underflow return Boolean is
          begin
             if Current_Command.Write then
-               raise Program_Error;
+               return
+                 Current_Command.Write_Data_Transfer_Length
+                   < Current_Command.Write_Expected_Data_Transfer_Length;
 
             elsif Current_Command.Read then
                return
@@ -690,6 +808,25 @@ begin
          when Receive_PDU =>
             Receive_PDU;
             Dispatch_PDU;
+
+         when Ready_To_Transfer =>
+            Send_Ready_To_Transfer;
+
+         when Data_Out =>
+            Receive_PDU;
+
+            declare
+               Header : iSCSI.PDUs.Basic_Header_Segment
+                 with Import, Address => Current_PDU.Header_Storage;
+
+            begin
+               if Header.Opcode = iSCSI.Types.SCSI_Data_Out then
+                  Dispatch_PDU;
+
+               else
+                  raise Program_Error;
+               end if;
+            end;
 
          when Data_In =>
             Send_Data_In;

@@ -68,6 +68,11 @@ package body Target.Handler is
       Descriptor  : out SCSI.Commands.SBC.WRITE_Command_Descriptor)
       return Boolean;
 
+   function Decode_WRITE_10
+     (CDB_Storage : A0B.Types.Arrays.Unsigned_8_Array;
+      Descriptor  : out SCSI.Commands.SBC.WRITE_Command_Descriptor)
+      return Boolean;
+
    procedure Failure_INVALID_COMMAND_OPERATION_CODE;
 
    function Failure_INVALID_FIELD_IN_CDB return Boolean;
@@ -119,7 +124,7 @@ package body Target.Handler is
       Data_Length       : out A0B.Types.Unsigned_32);
 
    type Operation_Kind is
-     (None, Inquiry, Mode_Sense, Read, Read_Capacity, Report_Luns);
+     (None, Inquiry, Mode_Sense, Read, Read_Capacity, Report_Luns, Write);
 
    type Operation_Information (Kind : Operation_Kind := None) is record
       Status            : SCSI.SAM5.STATUS;
@@ -145,6 +150,9 @@ package body Target.Handler is
 
          when Report_Luns =>
             Report_Luns : SCSI.Commands.SPC.REPORT_LUNS_Command_Descriptor;
+
+         when Write =>
+            Write : SCSI.Commands.SBC.WRITE_Command_Descriptor;
       end case;
    end record;
 
@@ -215,8 +223,52 @@ package body Target.Handler is
               (Allocation_Length => Operation.Report_Luns.ALLOCATION_LENGTH,
                Storage_Address   => Storage_Address,
                Data_Length       => Data_Length);
+
+         when Write =>
+            raise Program_Error;
       end case;
    end Data_In;
+
+   --------------
+   -- Data_Out --
+   --------------
+
+   procedure Data_Out
+     (Buffer_Offset   : A0B.Types.Unsigned_32;
+      Storage_Address : System.Address;
+      Data_Length     : A0B.Types.Unsigned_32) is
+   begin
+      Put_Line (">>> Data-Out <<<");
+      Put_Line (Operation'Image);
+      Put_Line ("===============");
+
+      case Operation.Kind is
+         when None =>
+            raise Program_Error;
+
+         when Inquiry =>
+            raise Program_Error;
+
+         when Mode_Sense =>
+            raise Program_Error;
+
+         when Read =>
+            raise Program_Error;
+
+         when Read_Capacity =>
+            raise Program_Error;
+
+         when Report_Luns =>
+            raise Program_Error;
+
+         when Write =>
+            Target.File.Write
+              (Descriptor      => Operation.Write,
+               Buffer_Offset   => Buffer_Offset,
+               Storage_Address => Storage_Address,
+               Data_Length     => Data_Length);
+      end case;
+   end Data_Out;
 
    --------------------
    -- Decode_INQUIRY --
@@ -660,6 +712,70 @@ package body Target.Handler is
       return True;
    end Decode_WRITE_6;
 
+   ---------------------
+   -- Decode_WRITE_10 --
+   ---------------------
+
+   function Decode_WRITE_10
+     (CDB_Storage : A0B.Types.Arrays.Unsigned_8_Array;
+      Descriptor  : out SCSI.Commands.SBC.WRITE_Command_Descriptor)
+      return Boolean
+   is
+      use type A0B.Types.Reserved_1;
+      use type A0B.Types.Reserved_2;
+
+   begin
+      case Length_Check is
+         when Default =>
+            if CDB_Storage'Length /= SCSI.SBC4.CDB.WRITE_10_CDB_Length then
+               return Failure_INVALID_FIELD_IN_CDB;
+            end if;
+
+         when USB_MSC_BOOT =>
+            if CDB_Storage'Length /= SCSI.SBC4.CDB.WRITE_10_CDB_Length
+              and CDB_Storage'Length /= USB_MSC_BOOT_CDB_Length
+            then
+               return Failure_INVALID_FIELD_IN_CDB;
+            end if;
+
+         when iSCSI =>
+            if CDB_Storage'Length /= iSCSI_CDB_Minumum_Length then
+               return Failure_INVALID_FIELD_IN_CDB;
+            end if;
+      end case;
+
+      declare
+         CDB : constant SCSI.SBC4.CDB.WRITE_10_CDB
+           with Import, Address => CDB_Storage'Address;
+
+      begin
+         if CDB.Reserved_1_2_2 /= A0B.Types.Zero
+           or CDB.Reserved_6_7_6 /= A0B.Types.Zero
+         then
+            return Failure_INVALID_FIELD_IN_CDB;
+         end if;
+
+         if CDB.Obsolete_1_0_0 /= A0B.Types.Zero
+           or CDB.Obsolete_1_1_1 /= A0B.Types.Zero
+         then
+            return Failure_INVALID_FIELD_IN_CDB;
+         end if;
+
+         Descriptor :=
+           (GROUP_NUMBER          => CDB.GROUP_NUMBER,
+            LOGICAL_BLOCK_ADDRESS =>
+              A0B.Types.Unsigned_64 (CDB.LOGICAL_BLOCK_ADDRESS.Value),
+            TRANSFER_LENGTH       =>
+              A0B.Types.Unsigned_32 (CDB.TRANSFER_LENGTH.Value),
+            WRPROTECT             => CDB.WRPROTECT,
+            DPO                   => CDB.DPO,
+            FUA                   => CDB.FUA,
+            DLD                   => 0);  --  Not present in WRITE (10)
+      end;
+
+      return True;
+   end Decode_WRITE_10;
+
    ----------------------------
    -- Encode_MODE_SENSE_Data --
    ----------------------------
@@ -1028,7 +1144,14 @@ package body Target.Handler is
    procedure Execute_WRITE
      (Descriptor : SCSI.Commands.SBC.WRITE_Command_Descriptor) is
    begin
-      raise Program_Error;
+      Operation :=
+        (Kind              => Write,
+         Status            => SCSI.SAM5.GOOD,
+         Sense             => SCSI.SPC5.NO_SENSE,
+         Write_Data_Length =>
+           Target.File.Data_Length (Descriptor.TRANSFER_LENGTH),
+         Read_Data_Length  => 0,
+         Write             => Descriptor);
    end Execute_WRITE;
 
    --------------------------------------------
@@ -1085,6 +1208,9 @@ package body Target.Handler is
 
          when Report_Luns =>
             return True;
+
+         when Write =>
+            raise Program_Error;
       end case;
    end Has_Data_In;
 
@@ -1212,6 +1338,16 @@ package body Target.Handler is
 
                begin
                   if Decode_WRITE_6 (CDB_Storage, Descriptor) then
+                     Execute_WRITE (Descriptor);
+                  end if;
+               end;
+
+            when SCSI.SBC4.WRITE_10 =>
+               declare
+                  Descriptor : SCSI.Commands.SBC.WRITE_Command_Descriptor;
+
+               begin
+                  if Decode_WRITE_10 (CDB_Storage, Descriptor) then
                      Execute_WRITE (Descriptor);
                   end if;
                end;

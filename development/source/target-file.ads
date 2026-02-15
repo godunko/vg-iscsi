@@ -22,4 +22,10 @@ package Target.File is
       Storage_Address : System.Address;
       Data_Length     : out A0B.Types.Unsigned_32);
 
+   procedure Write
+     (Descriptor      : SCSI.Commands.SBC.WRITE_Command_Descriptor;
+      Buffer_Offset   : A0B.Types.Unsigned_32;
+      Storage_Address : System.Address;
+      Data_Length     : A0B.Types.Unsigned_32);
+
 end Target.File;
