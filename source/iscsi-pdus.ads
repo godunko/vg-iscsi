@@ -40,9 +40,9 @@ package iSCSI.PDUs with Pure is
       Initiator_Task_Tag at 16 range 0 .. 31;
    end record;
 
-   --------------------------------------
-   --  Login Request / Login Response  --
-   --------------------------------------
+   ------------------------------------
+   -- Login Request / Login Response --
+   ------------------------------------
 
    type Login_Request_Header is record
       Immediate          : Boolean                 := True;
@@ -162,9 +162,9 @@ package iSCSI.PDUs with Pure is
       Reserved_47        at 47 range 0 .. 7;
    end record;
 
-   --------------------
-   --  SCSI Command  --
-   --------------------
+   ------------------
+   -- SCSI Command --
+   ------------------
 
    type SCSI_Command_Descriptor_Block is
      new A0B.Types.Arrays.Unsigned_8_Array (0 .. 15);
@@ -215,9 +215,9 @@ package iSCSI.PDUs with Pure is
       SCSI_Command_Descriptor_Block at 32 range 0 .. 127;
    end record;
 
-   --------------------
-   --  SCSI Data-In  --
-   --------------------
+   ------------------
+   -- SCSI Data-In --
+   ------------------
 
    type SCSI_Data_In_Header is record
       Reserved_0_0_0      : A0B.Types.Reserved_1    := A0B.Types.Zero;
@@ -272,9 +272,76 @@ package iSCSI.PDUs with Pure is
       Residual_Count      at 44 range 0 .. 31;
    end record;
 
-   ---------------------
-   --  SCSI Response  --
-   ---------------------
+   -------------------
+   -- SCSI Data-Out --
+   -------------------
+
+   type SCSI_Data_Out_Header is record
+      Reserved_0_0_0      : A0B.Types.Reserved_1    := A0B.Types.Zero;
+      Reserved_0_1_1      : A0B.Types.Reserved_1    := A0B.Types.Zero;
+      Opcode              : iSCSI.Types.Opcode_Type := iSCSI.Types.SCSI_Data_Out;
+      Final               : Boolean;
+      Reserved_1_1_7      : A0B.Types.Reserved_7    := A0B.Types.Zero;
+      Reserved_2          : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_3          : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      TotalAHSLength      : A0B.Types.Unsigned_8;
+      DataSegmentLength   : A0B.Types.Unsigned_24;
+      Logical_Unit_Number : A0B.Types.Unsigned_64;
+      Initiator_Task_Tag  : A0B.Types.Unsigned_32;
+      Target_Transfer_Tag : A0B.Types.Unsigned_32;
+      Reserved_24         : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_25         : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_26         : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_27         : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      ExpStatSN           : A0B.Types.Unsigned_32;
+      Reserved_32         : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_33         : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_34         : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_35         : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      DataSN              : A0B.Types.Unsigned_32;
+      Buffer_Offset       : A0B.Types.Unsigned_32;
+      Reserved_44         : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_45         : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_46         : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_47         : A0B.Types.Reserved_8    := A0B.Types.Zero;
+   end record
+     with Size                 => Basic_Header_Segment_Length * Byte_Size,
+          Bit_Order            => System.High_Order_First,
+          Scalar_Storage_Order => System.High_Order_First;
+
+   for SCSI_Data_Out_Header use record
+      Reserved_0_0_0      at 0 range 0 .. 0;
+      Reserved_0_1_1      at 0 range 1 .. 1;
+      Opcode              at 0 range 2 .. 7;
+      Final               at 1 range 0 .. 0;
+      Reserved_1_1_7      at 1 range 1 .. 7;
+      Reserved_2          at 2 range 0 .. 7;
+      Reserved_3          at 3 range 0 .. 7;
+      TotalAHSLength      at 4 range 0 .. 7;
+      DataSegmentLength   at 5 range 0 .. 23;
+      Logical_Unit_Number at 8 range 0 .. 63;
+      Initiator_Task_Tag  at 16 range 0 .. 31;
+      Target_Transfer_Tag at 20 range 0 .. 31;
+      Reserved_24         at 24 range 0 .. 7;
+      Reserved_25         at 25 range 0 .. 7;
+      Reserved_26         at 26 range 0 .. 7;
+      Reserved_27         at 27 range 0 .. 7;
+      ExpStatSN           at 28 range 0 .. 31;
+      Reserved_32         at 32 range 0 .. 7;
+      Reserved_33         at 33 range 0 .. 7;
+      Reserved_34         at 34 range 0 .. 7;
+      Reserved_35         at 35 range 0 .. 7;
+      DataSN              at 36 range 0 .. 31;
+      Buffer_Offset       at 40 range 0 .. 31;
+      Reserved_44         at 44 range 0 .. 7;
+      Reserved_45         at 45 range 0 .. 7;
+      Reserved_46         at 46 range 0 .. 7;
+      Reserved_47         at 47 range 0 .. 7;
+   end record;
+
+   -------------------
+   -- SCSI Response --
+   -------------------
 
    type SCSI_Response_Header is record
       Reserved_0_0_0      : A0B.Types.Reserved_1    := A0B.Types.Zero;
