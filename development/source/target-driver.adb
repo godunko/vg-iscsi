@@ -91,7 +91,16 @@ procedure Target.Driver is
       Data_Length    : A0B.Types.Unsigned_32;
    end record;
 
-   Current_PDU : PDU;
+   type Command is record
+      Write                               : Boolean;
+      Read                                : Boolean;
+      Initiator_Task_Tag                  : A0B.Types.Unsigned_32;
+      Write_Expected_Data_Transfer_Length : A0B.Types.Unsigned_32;
+      Read_Expected_Data_Transfer_Length  : A0B.Types.Unsigned_32;
+   end record;
+
+   Current_PDU     : PDU;
+   Current_Command : Command;
 
    ------------------
    -- Dispatch_PDU --
@@ -221,9 +230,6 @@ procedure Target.Driver is
       Request_Header : iSCSI.PDUs.SCSI_Command_Header
         with Import, Address => Current_PDU.Header_Storage;
 
-      Command_Initiator_Task_Tag            : A0B.Types.Unsigned_32;
-      Command_Expected_Data_Transfer_Length : A0B.Types.Unsigned_32;
-
    begin
       Put_Line ("iSCSI Immediate: " & Request_Header.Immediate'Image);
       Put_Line ("iSCSI Final: " & Request_Header.Final'Image);
@@ -237,9 +243,27 @@ procedure Target.Driver is
       Put_Line ("iSCSI ExpStatSN" & Request_Header.ExpStatSN'Image);
       Put_Line ("iSCSI CDB " & Request_Header.SCSI_Command_Descriptor_Block'Image);
 
-      Command_Initiator_Task_Tag := Request_Header.Initiator_Task_Tag;
-      Command_Expected_Data_Transfer_Length :=
-        Request_Header.Expected_Data_Transfer_Length;
+      Current_Command.Write := Request_Header.Write;
+      Current_Command.Read  := Request_Header.Read;
+      Current_Command.Initiator_Task_Tag := Request_Header.Initiator_Task_Tag;
+
+      if Request_Header.Write then
+         Current_Command.Write_Expected_Data_Transfer_Length :=
+           Request_Header.Expected_Data_Transfer_Length;
+
+         if Request_Header.Read then
+            --  XXX Process Bidirectional Read Expected Data Transfer Length AHS
+            raise Program_Error;
+         end if;
+
+      elsif Request_Header.Read then
+         Current_Command.Write_Expected_Data_Transfer_Length := 0;
+         Current_Command.Read_Expected_Data_Transfer_Length :=
+           Request_Header.Expected_Data_Transfer_Length;
+      else
+         Current_Command.Write_Expected_Data_Transfer_Length := 0;
+         Current_Command.Read_Expected_Data_Transfer_Length := 0;
+      end if;
 
       Target.Handler.Process_Command
         (A0B.Types.Arrays.Unsigned_8_Array
@@ -260,7 +284,7 @@ procedure Target.Driver is
                TotalAHSLength      => 0,
                DataSegmentLength   => A0B.Types.Unsigned_24 (Response_Length),
                Logical_Unit_Number => 0,
-               Initiator_Task_Tag  => Command_Initiator_Task_Tag,
+               Initiator_Task_Tag  => Current_Command.Initiator_Task_Tag,
                Target_Transfer_Tag => 0,
                StatSN              => Connection_StatSN,
                ExpCmdSN            => Session_ExpCmdSN,
@@ -312,12 +336,14 @@ procedure Target.Driver is
             Bidirectional_Read_Residual_Underflow => False,
             Residual_Overflow                     => False,
             Residual_Underflow                    =>
-              Command_Expected_Data_Transfer_Length > Response_Length,
+              Current_Command.Read_Expected_Data_Transfer_Length
+                 > Response_Length,
             Response                              => 0,
             Status                                => Target.Handler.Status,
             TotalAHSLength                        => 0,
             DataSegmentLength                     => 0,
-            Initiator_Task_Tag                    => Command_Initiator_Task_Tag,
+            Initiator_Task_Tag                    =>
+              Current_Command.Initiator_Task_Tag,
             SNACK_Tag                             => 0,
             StatSN                                => Connection_StatSN,
             ExpCmdSN                              => Session_ExpCmdSN,
@@ -325,7 +351,8 @@ procedure Target.Driver is
             ExpDataSN                             => 0,
             Bidirectional_Read_Residual_Count     => 0,
             Residual_Count                        =>
-              Command_Expected_Data_Transfer_Length - Response_Length,
+              Current_Command.Read_Expected_Data_Transfer_Length
+                - Response_Length,
             others                                => <>);
          Header_Storage : Ada.Streams.Stream_Element_Array (0 .. 47)
            with Import, Address => Header'Address;
@@ -415,6 +442,12 @@ procedure Target.Driver is
          Put_Line
            ("iSCSI DSLen  "
             & A0B.Types.Unsigned_24'Image (Header.DataSegmentLength));
+
+         if not Header.Final then
+            --  XXX Not supported
+
+            raise Program_Error;
+         end if;
 
          if Header.TotalAHSLength /= 0 then
             raise Program_Error;
