@@ -35,6 +35,9 @@ procedure Target.Driver is
      (Value : Ada.Streams.Stream_Element_Offset)
       return Ada.Streams.Stream_Element_Offset;
 
+   function Adjusted_Size
+     (Value : A0B.Types.Unsigned_24) return Ada.Streams.Stream_Element_Offset;
+
    function To_String (Item : iSCSI.Text.UTF8_String) return String;
 
    procedure Receive_PDU;
@@ -45,6 +48,9 @@ procedure Target.Driver is
 
    procedure Send_Ready_To_Transfer;
 
+   procedure Process_PDU_Header
+     (Basic_Header : iSCSI.PDUs.Basic_Header_Segment);
+
    procedure Process_Login_Request;
 
    procedure Process_SCSI_Command;
@@ -52,17 +58,6 @@ procedure Target.Driver is
    procedure Process_SCSI_Data_Out;
 
    procedure Dispatch_PDU;
-
-   -------------------
-   -- Adjusted_Size --
-   -------------------
-
-   function Adjusted_Size
-     (Value : Ada.Streams.Stream_Element_Offset)
-      return Ada.Streams.Stream_Element_Offset is
-   begin
-      return ((Value + 4 - 1) / 4) * 4;
-   end Adjusted_Size;
 
    Listen_Address : constant GNAT.Sockets.Sock_Addr_Type :=
      (Family => GNAT.Sockets.Family_Inet,
@@ -94,8 +89,6 @@ procedure Target.Driver is
 
    type PDU is record
       Header_Storage : System.Address;
-      Data_Storage   : System.Address;
-      Data_Length    : A0B.Types.Unsigned_32;
    end record;
 
    type Command is record
@@ -112,8 +105,37 @@ procedure Target.Driver is
       R2TSN                               : A0B.Types.Unsigned_32;
    end record;
 
-   Current_PDU     : PDU;
-   Current_Command : Command;
+   type Data_Out_Information is record
+      Final                        : Boolean;
+      Storage_Address              : System.Address;
+      Buffer_Offset                : A0B.Types.Unsigned_32;
+      Desired_Data_Transfer_Length : A0B.Types.Unsigned_32;
+   end record;
+
+   Current_PDU      : PDU;
+   Current_Command  : Command;
+   Current_Data_Out : Data_Out_Information;
+
+   -------------------
+   -- Adjusted_Size --
+   -------------------
+
+   function Adjusted_Size
+     (Value : Ada.Streams.Stream_Element_Offset)
+      return Ada.Streams.Stream_Element_Offset is
+   begin
+      return ((Value + 4 - 1) / 4) * 4;
+   end Adjusted_Size;
+
+   -------------------
+   -- Adjusted_Size --
+   -------------------
+
+   function Adjusted_Size
+     (Value : A0B.Types.Unsigned_24) return Ada.Streams.Stream_Element_Offset is
+   begin
+      return Adjusted_Size (Ada.Streams.Stream_Element_Offset (Value));
+   end Adjusted_Size;
 
    ------------------
    -- Dispatch_PDU --
@@ -134,7 +156,7 @@ procedure Target.Driver is
          raise Program_Error;
 
       elsif Header.Opcode = iSCSI.Types.SCSI_Data_Out then
-         Process_SCSI_Data_Out;
+         raise Program_Error;
 
       else
          raise Program_Error;
@@ -241,6 +263,61 @@ procedure Target.Driver is
       end;
    end Process_Login_Request;
 
+   ------------------------
+   -- Process_PDU_Header --
+   ------------------------
+
+   procedure Process_PDU_Header
+     (Basic_Header : iSCSI.PDUs.Basic_Header_Segment) is
+   begin
+      if Basic_Header.Opcode = iSCSI.Types.SCSI_Data_Out then
+         declare
+            Header : constant iSCSI.PDUs.SCSI_Data_Out_Header
+              with Import, Address => Basic_Header'Address;
+
+         begin
+            Current_Data_Out.Final := Header.Final;
+
+            if Header.DataSegmentLength /= 0 then
+               declare
+                  use type System.Storage_Elements.Storage_Offset;
+
+                  Storage : Ada.Streams.Stream_Element_Array
+                    (1 .. Adjusted_Size (Header.DataSegmentLength))
+                      with Import,
+                           Address =>
+                        Current_Data_Out.Storage_Address
+                          + System.Storage_Elements.Storage_Count
+                              (Header.Buffer_Offset
+                                 - Current_Data_Out.Buffer_Offset);
+                  Last    : Ada.Streams.Stream_Element_Offset;
+
+               begin
+                  --  XXX When adjusted data is not equal to DataSegmentLength,
+                  --  last few bytes are overwritten, thus damaged.
+
+                  GNAT.Sockets.Receive_Socket
+                    (Socket => Accept_Socket,
+                     Item   => Storage,
+                     Last   => Last);
+
+                  if Last /= Adjusted_Size (Header.DataSegmentLength) then
+                     raise Program_Error;
+                  end if;
+               end;
+
+               Put_Line (Current_Data_Out'Image);
+
+            else
+               raise Program_Error;
+            end if;
+         end;
+
+      else
+         raise Program_Error;
+      end if;
+   end Process_PDU_Header;
+
    --------------------------
    -- Process_SCSI_Command --
    --------------------------
@@ -248,38 +325,38 @@ procedure Target.Driver is
    procedure Process_SCSI_Command is
       use type SCSI.SAM5.STATUS;
 
-      Request_Header : iSCSI.PDUs.SCSI_Command_Header
+      Header : iSCSI.PDUs.SCSI_Command_Header
         with Import, Address => Current_PDU.Header_Storage;
 
    begin
-      Put_Line ("iSCSI Immediate: " & Request_Header.Immediate'Image);
-      Put_Line ("iSCSI Final: " & Request_Header.Final'Image);
-      Put_Line ("iSCSI Read: " & Request_Header.Read'Image);
-      Put_Line ("iSCSI Write: " & Request_Header.Write'Image);
-      Put_Line ("iSCSI Attr: " & Request_Header.Attr'Image);
-      Put_Line ("iSCSI LUN: " & Request_Header.Logical_Unit_Number'Image);
-      Put_Line ("iSCSI Initiator Task Tag" & Request_Header.Initiator_Task_Tag'Image);
-      Put_Line ("iSCSI Expected Data Transfer Length" & Request_Header.Expected_Data_Transfer_Length'Image);
-      Put_Line ("iSCSI CmdSN" & Request_Header.CmdSN'Image);
-      Put_Line ("iSCSI ExpStatSN" & Request_Header.ExpStatSN'Image);
-      Put_Line ("iSCSI CDB " & Request_Header.SCSI_Command_Descriptor_Block'Image);
+      Put_Line ("iSCSI Immediate: " & Header.Immediate'Image);
+      Put_Line ("iSCSI Final: " & Header.Final'Image);
+      Put_Line ("iSCSI Read: " & Header.Read'Image);
+      Put_Line ("iSCSI Write: " & Header.Write'Image);
+      Put_Line ("iSCSI Attr: " & Header.Attr'Image);
+      Put_Line ("iSCSI LUN: " & Header.Logical_Unit_Number'Image);
+      Put_Line ("iSCSI Initiator Task Tag" & Header.Initiator_Task_Tag'Image);
+      Put_Line ("iSCSI Expected Data Transfer Length" & Header.Expected_Data_Transfer_Length'Image);
+      Put_Line ("iSCSI CmdSN" & Header.CmdSN'Image);
+      Put_Line ("iSCSI ExpStatSN" & Header.ExpStatSN'Image);
+      Put_Line ("iSCSI CDB " & Header.SCSI_Command_Descriptor_Block'Image);
 
-      Current_Command.Logical_Unit_Number := Request_Header.Logical_Unit_Number;
-      Current_Command.Immediate           := Request_Header.Immediate;
-      Current_Command.Initiator_Task_Tag  := Request_Header.Initiator_Task_Tag;
+      Current_Command.Logical_Unit_Number := Header.Logical_Unit_Number;
+      Current_Command.Immediate           := Header.Immediate;
+      Current_Command.Initiator_Task_Tag  := Header.Initiator_Task_Tag;
 
-      Current_Command.Write                      := Request_Header.Write;
-      Current_Command.Read                       := Request_Header.Read;
+      Current_Command.Write                      := Header.Write;
+      Current_Command.Read                       := Header.Read;
       Current_Command.Write_Data_Transfer_Length := 0;
       Current_Command.Read_Data_Transfer_Length  := 0;
       Current_Command.DataSN                     := 0;
       Current_Command.R2TSN                      := 0;
 
-      if Request_Header.Write then
+      if Header.Write then
          Current_Command.Write_Expected_Data_Transfer_Length :=
-           Request_Header.Expected_Data_Transfer_Length;
+           Header.Expected_Data_Transfer_Length;
 
-         if Request_Header.Read then
+         if Header.Read then
             --  XXX Process Bidirectional Read Expected Data Transfer Length AHS
             raise Program_Error;
 
@@ -287,10 +364,11 @@ procedure Target.Driver is
             Current_Command.Read_Expected_Data_Transfer_Length := 0;
          end if;
 
-      elsif Request_Header.Read then
+      elsif Header.Read then
          Current_Command.Write_Expected_Data_Transfer_Length := 0;
          Current_Command.Read_Expected_Data_Transfer_Length :=
-           Request_Header.Expected_Data_Transfer_Length;
+           Header.Expected_Data_Transfer_Length;
+
       else
          Current_Command.Write_Expected_Data_Transfer_Length := 0;
          Current_Command.Read_Expected_Data_Transfer_Length := 0;
@@ -298,7 +376,7 @@ procedure Target.Driver is
 
       Target.Handler.Process_Command
         (A0B.Types.Arrays.Unsigned_8_Array
-           (Request_Header.SCSI_Command_Descriptor_Block));
+           (Header.SCSI_Command_Descriptor_Block));
 
       if Target.Handler.Status /= SCSI.SAM5.GOOD then
          State := Response;
@@ -319,20 +397,17 @@ procedure Target.Driver is
    ---------------------------
 
    procedure Process_SCSI_Data_Out is
-      Header : iSCSI.PDUs.SCSI_Data_Out_Header
-        with Import, Address => Current_PDU.Header_Storage;
-
    begin
       Put_Line (Current_Command'Image);
-      Put_Line (Header'Image);
+      Put_Line (Current_Data_Out'Image);
 
       Target.Handler.Data_Out
-        (Buffer_Offset   => Header.Buffer_Offset,
-         Storage_Address => Current_PDU.Data_Storage,
-         Data_Length     => A0B.Types.Unsigned_32 (Header.DataSegmentLength));
+        (Buffer_Offset   => Current_Data_Out.Buffer_Offset,
+         Storage_Address => Current_Data_Out.Storage_Address,
+         Data_Length     => Current_Data_Out.Desired_Data_Transfer_Length);
 
       Current_Command.Write_Data_Transfer_Length :=
-        @ + A0B.Types.Unsigned_32 (Header.DataSegmentLength);
+        @ + Current_Data_Out.Desired_Data_Transfer_Length;
 
       if Current_Command.Write_Data_Transfer_Length
         = Current_Command.Write_Expected_Data_Transfer_Length
@@ -376,13 +451,19 @@ procedure Target.Driver is
            ("iSCSI DSLen  "
             & A0B.Types.Unsigned_24'Image (Header.DataSegmentLength));
 
-         if not Header.Final then
-            --  XXX Not supported
-
+         if Header.TotalAHSLength /= 0 then
             raise Program_Error;
          end if;
 
-         if Header.TotalAHSLength /= 0 then
+         if Header.Opcode = iSCSI.Types.SCSI_Data_Out then
+            Process_PDU_Header (Header);
+
+            return;
+         end if;
+
+         if not Header.Final then
+            --  XXX Not supported
+
             raise Program_Error;
          end if;
 
@@ -399,14 +480,6 @@ procedure Target.Driver is
             then
                raise Program_Error;
             end if;
-
-            Current_PDU.Data_Storage := Data_Storage'Address;
-            Current_PDU.Data_Length  :=
-              A0B.Types.Unsigned_32 (Header.DataSegmentLength);
-
-         else
-            Current_PDU.Data_Storage := System.Null_Address;
-            Current_PDU.Data_Length  := 0;
          end if;
       end;
    end Receive_PDU;
@@ -458,7 +531,6 @@ procedure Target.Driver is
 
          Put_Line ("Send Data-In ..." & Data_Length'Image);
          Put_Line (Header'Image);
-         Put_Line (Data'Image);
          GNAT.Sockets.Send_Socket
            (Socket => Accept_Socket,
             Item   => Header_Storage,
@@ -480,13 +552,21 @@ procedure Target.Driver is
    ----------------------------
 
    procedure Send_Ready_To_Transfer is
-      Burst : constant := 8_192;
+      Burst : constant := 64 * 1024;
 
    begin
       Put_Line (Current_Command'Image);
 
       declare
-         Header       : iSCSI.PDUs.Ready_To_Transfer_Header :=
+         Buffer_Offset                : constant A0B.Types.Unsigned_32 :=
+           Current_Command.Write_Data_Transfer_Length;
+         Desired_Data_Transfer_Length : constant A0B.Types.Unsigned_32 :=
+           A0B.Types.Unsigned_32'Min
+             (Burst,
+              Current_Command.Write_Expected_Data_Transfer_Length
+              - Current_Command.Write_Data_Transfer_Length);
+
+         Header                       : iSCSI.PDUs.Ready_To_Transfer_Header :=
            (Opcode                       => <>,
             TotalAHSLength               => <>,
             DataSegmentLength            => <>,
@@ -497,13 +577,8 @@ procedure Target.Driver is
             ExpCmdSN                     => Session_ExpCmdSN,
             MaxCmdSN                     => Session_MaxCmdSN,
             R2TSN                        => Current_Command.R2TSN,
-            Buffer_Offset                =>
-              Current_Command.Write_Data_Transfer_Length,
-            Desired_Data_Transfer_Length =>
-              A0B.Types.Unsigned_32'Min
-                (Burst,
-                 Current_Command.Write_Expected_Data_Transfer_Length
-                   - Current_Command.Write_Data_Transfer_Length),
+            Buffer_Offset                => Buffer_Offset,
+            Desired_Data_Transfer_Length => Desired_Data_Transfer_Length,
             others                       => <>);
          pragma Warnings (Off, "overlay changes scalar storage order");
          Header_Storage : Ada.Streams.Stream_Element_Array (0 .. 47)
@@ -521,6 +596,12 @@ procedure Target.Driver is
             Last   => Last);
          Put_Line (Last'Image);
          Put_Line ("  ... done.");
+
+         Current_Data_Out :=
+           (Final                        => False,
+            Storage_Address              => Data_Storage'Address,
+            Buffer_Offset                => Buffer_Offset,
+            Desired_Data_Transfer_Length => Desired_Data_Transfer_Length);
       end;
 
       State := Data_Out;
@@ -717,7 +798,7 @@ procedure Target.Driver is
          pragma Warnings (On, "overlay changes scalar storage order");
 
          Data           : Ada.Streams.Stream_Element_Array
-          (0 .. Adjusted_Size (18 + 2) - 1)
+          (0 .. Adjusted_Size (Ada.Streams.Stream_Element_Count (18 + 2)) - 1)
              with Import, Address => Response_Storage'Address;
          pragma Warnings (Off, "overlay changes scalar storage order");
          SenseLength    : A0B.Types.Big_Endian.Unsigned_16
@@ -815,18 +896,9 @@ begin
          when Data_Out =>
             Receive_PDU;
 
-            declare
-               Header : iSCSI.PDUs.Basic_Header_Segment
-                 with Import, Address => Current_PDU.Header_Storage;
-
-            begin
-               if Header.Opcode = iSCSI.Types.SCSI_Data_Out then
-                  Dispatch_PDU;
-
-               else
-                  raise Program_Error;
-               end if;
-            end;
+            if Current_Data_Out.Final then
+               Process_SCSI_Data_Out;
+            end if;
 
          when Data_In =>
             Send_Data_In;
