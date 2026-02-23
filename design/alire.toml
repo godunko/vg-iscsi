@@ -1,5 +1,5 @@
-name = "vg_iscsi_development"
-description = "iSCSI Development Environment"
+name = "vg_iscsi_design"
+description = "iSCSI Development Sandbox"
 version = "0.1.0-dev"
 
 authors = ["Vadim Godunko"]

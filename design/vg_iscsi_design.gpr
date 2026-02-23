@@ -4,11 +4,11 @@
 --  SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 --
 
-with "config/vg_iscsi_development_config.gpr";
+with "config/vg_iscsi_design_config.gpr";
 
 with "a0b_common.gpr";
 
-project VG_iSCSI_Development is
+project VG_iSCSI_Design is
 
    for Object_Dir use ".objs/" & A0B_Common.Object_Dir_Suffix;
    for Exec_Dir use "bin";
@@ -23,4 +23,4 @@ project VG_iSCSI_Development is
       for Executable ("target-driver.adb") use "iscsi_target";
    end Builder;
 
-end VG_iSCSI_Development;
+end VG_iSCSI_Design;
