@@ -9,17 +9,16 @@ with System;
 with A0B.Callbacks;
 with A0B.Types.Arrays;
 
+with SCSI.Buffers;
 with SCSI.SAM5;
 
 package Target.Handler is
 
    procedure Execute_Command
-     (CDB_Storage : A0B.Types.Arrays.Unsigned_8_Array;
-      On_Finished : A0B.Callbacks.Callback);
-   --  Data_Out_Storage  : System.Address;
-   --  Data_Out_Capacity : A0B.Types.Unsigned_32;
-   --  Data_In_Storage   : System.Address;
-   --  Data_In_Capacity  : A0B.Types.Unsigned_32;
+     (CDB_Storage     : A0B.Types.Arrays.Unsigned_8_Array;
+      Data_Out_Buffer : SCSI.Buffers.Data_Buffer;
+      Data_In_Buffer  : SCSI.Buffers.Data_Buffer;
+      On_Finished     : A0B.Callbacks.Callback);
 
    procedure Data_In
      (Storage_Address : System.Address;

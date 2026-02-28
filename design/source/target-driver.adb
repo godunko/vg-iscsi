@@ -19,6 +19,7 @@ with iSCSI.PDUs;
 with iSCSI.Target.Login;
 with iSCSI.Text;
 with iSCSI.Types;
+with SCSI.Buffers;
 with SCSI.SAM5;
 with SCSI.SPC5.Sense;
 
@@ -82,6 +83,9 @@ procedure Target.Driver is
    Data_Last      : Ada.Streams.Stream_Element_Offset;
 
    Response_Storage : Ada.Streams.Stream_Element_Array (0 .. 256*1024 -1); --  65_535);
+
+   Data_Out_Buffer : SCSI.Buffers.Data_Buffer;
+   Data_In_Buffer  : SCSI.Buffers.Data_Buffer;
 
    --  Session_CmdSN     : A0B.Types.Unsigned_32 := 0;
    Session_ExpCmdSN  : A0B.Types.Unsigned_32 := 0;
@@ -184,7 +188,12 @@ procedure Target.Driver is
          State := Ready_To_Transfer;
 
       elsif Current_Command.Read then
-         State := Data_In;
+         if SCSI.Buffers.Length (Data_In_Buffer) = 0 then
+            State := Data_In;
+
+         else
+            raise Program_Error;
+         end if;
 
       else
          State := Response;
@@ -400,10 +409,13 @@ procedure Target.Driver is
          Current_Command.Read_Expected_Data_Transfer_Length := 0;
       end if;
 
-      Target.Handler.Process_Command
-        (A0B.Types.Arrays.Unsigned_8_Array
+      Target.Handler.Execute_Command
+        (CDB_Storage     => A0B.Types.Arrays.Unsigned_8_Array
            (Header.SCSI_Command_Descriptor_Block),
-         On_Command_Execute_Finished_Callbacks.Create_Callback);
+         Data_Out_Buffer => Data_Out_Buffer,
+         Data_In_Buffer  => Data_In_Buffer,
+         On_Finished     =>
+           On_Command_Execute_Finished_Callbacks.Create_Callback);
    end Process_SCSI_Command;
 
    ---------------------------
@@ -867,6 +879,9 @@ procedure Target.Driver is
          Put_Line ("  ... done.");
       end;
 
+      SCSI.Buffers.Reset (Data_Out_Buffer);
+      SCSI.Buffers.Reset (Data_In_Buffer);
+
       State := Receive_PDU;
    end Send_Response;
 
@@ -897,6 +912,11 @@ begin
       Socket   => Accept_Socket,
       Address  => Client_Address);
    GNAT.Sockets.Close_Socket (Listen_Socket);
+
+   SCSI.Buffers.Initialize
+     (Data_Out_Buffer, Data_Storage'Address, Data_Storage'Length);
+   SCSI.Buffers.Initialize
+     (Data_In_Buffer, Data_Storage'Address, Response_Storage'Length);
 
    loop
       case State is

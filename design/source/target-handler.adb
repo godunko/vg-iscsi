@@ -524,8 +524,10 @@ package body Target.Handler is
    ---------------------
 
    procedure Execute_Command
-     (CDB_Storage : A0B.Types.Arrays.Unsigned_8_Array;
-      On_Finished : A0B.Callbacks.Callback)
+     (CDB_Storage     : A0B.Types.Arrays.Unsigned_8_Array;
+      Data_Out_Buffer : SCSI.Buffers.Data_Buffer;
+      Data_In_Buffer  : SCSI.Buffers.Data_Buffer;
+      On_Finished     : A0B.Callbacks.Callback)
    is
       Decoder : SCSI_Decoder;
 
