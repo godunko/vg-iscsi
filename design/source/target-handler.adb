@@ -21,6 +21,7 @@ with SCSI.Decoders.SBC.WRITE_10;
 with SCSI.Decoders.SPC.INQUIRY;
 with SCSI.Decoders.SPC.MODE_SENSE_6;
 with SCSI.Decoders.SPC.REPORT_LUNS;
+with SCSI.Decoders.SPC.TEST_UNIT_READY;
 with SCSI.SBC4.CDB;
 with SCSI.SBC4.Data;
 with SCSI.SPC5.CDB;
@@ -32,17 +33,9 @@ with Target.File;
 
 package body Target.Handler is
 
-   USB_MSC_BOOT_CDB_Length  : constant := 12;
-   iSCSI_CDB_Minumum_Length : constant := 16;
-
    function Decode_READ_CAPACITY_16
      (CDB_Storage : SCSI.SPC5.CDB.SERVICE_ACTION_IN_16_CDB;
       Descriptor  : out SCSI.Commands.SBC.READ_CAPACITY_Command_Descriptor)
-      return Boolean;
-
-   function Decode_TEST_UNIT_READY
-     (CDB_Storage : A0B.Types.Arrays.Unsigned_8_Array;
-      Descriptor  : out SCSI.Commands.SPC.TEST_UNIT_READY_Command_Descriptor)
       return Boolean;
 
    procedure Failure_INVALID_COMMAND_OPERATION_CODE;
@@ -134,6 +127,7 @@ package body Target.Handler is
        and SCSI.Decoders.SBC.READ_6.READ_6_Decoder
        and SCSI.Decoders.SBC.READ_10.READ_10_Decoder
        and SCSI.Decoders.SPC.REPORT_LUNS.REPORT_LUNS_Decoder
+       and SCSI.Decoders.SPC.TEST_UNIT_READY.TEST_UNIT_READY_Decoder
        and SCSI.Decoders.SBC.WRITE_6.WRITE_6_Decoder
        and SCSI.Decoders.SBC.WRITE_10.WRITE_10_Decoder with null record;
 
@@ -312,60 +306,6 @@ package body Target.Handler is
 
       return True;
    end Decode_READ_CAPACITY_16;
-
-   ----------------------------
-   -- Decode_TEST_UNIT_READY --
-   ----------------------------
-
-   function Decode_TEST_UNIT_READY
-     (CDB_Storage : A0B.Types.Arrays.Unsigned_8_Array;
-      Descriptor  : out SCSI.Commands.SPC.TEST_UNIT_READY_Command_Descriptor)
-      return Boolean
-   is
-      use type A0B.Types.Reserved_8;
-
-   begin
-      case Length_Check is
-         when Default =>
-            if CDB_Storage'Length
-                 /= SCSI.SPC5.CDB.TEST_UNIT_READY_CDB_Length
-            then
-               return Failure_INVALID_FIELD_IN_CDB;
-            end if;
-
-         when USB_MSC_BOOT =>
-            if CDB_Storage'Length /= SCSI.SPC5.CDB.TEST_UNIT_READY_CDB_Length
-              and CDB_Storage'Length /= USB_MSC_BOOT_CDB_Length
-            then
-               return Failure_INVALID_FIELD_IN_CDB;
-            end if;
-
-         when iSCSI =>
-            if CDB_Storage'Length /= iSCSI_CDB_Minumum_Length then
-               return Failure_INVALID_FIELD_IN_CDB;
-            end if;
-      end case;
-
-      declare
-         CDB : constant SCSI.SPC5.CDB.TEST_UNIT_READY_CDB
-           with Import, Address => CDB_Storage'Address;
-
-      begin
-         if CDB.Reserved_1 /= A0B.Types.Zero
-           or CDB.Reserved_2 /= A0B.Types.Zero
-           or CDB.Reserved_3 /= A0B.Types.Zero
-           or CDB.Reserved_4 /= A0B.Types.Zero
-         then
-            return Failure_INVALID_FIELD_IN_CDB;
-         end if;
-
-         --  XXX CONTROL is not validated/decoded
-
-         Descriptor := (null record);
-      end;
-
-      return True;
-   end Decode_TEST_UNIT_READY;
 
    ----------------------------
    -- Encode_MODE_SENSE_Data --
@@ -927,7 +867,7 @@ package body Target.Handler is
                     SCSI.Commands.SPC.TEST_UNIT_READY_Command_Descriptor;
 
                begin
-                  if Decode_TEST_UNIT_READY (CDB_Storage, Descriptor) then
+                  if Decoder.Decode_TEST_UNIT_READY (CDB_Storage, Descriptor) then
                      Execute_TEST_UNIT_READY (Descriptor);
 
                   else
