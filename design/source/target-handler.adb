@@ -14,6 +14,7 @@ with A0B.Types.Big_Endian;
 
 with SCSI.Commands.SBC;
 with SCSI.Commands.SPC;
+with SCSI.Decoders.SPC.INQUIRY;
 with SCSI.Decoders.SBC.READ_6;
 with SCSI.Decoders.SBC.READ_10;
 with SCSI.Decoders.SBC.WRITE_6;
@@ -31,11 +32,6 @@ package body Target.Handler is
 
    USB_MSC_BOOT_CDB_Length  : constant := 12;
    iSCSI_CDB_Minumum_Length : constant := 16;
-
-   function Decode_INQUIRY
-     (CDB_Storage : A0B.Types.Arrays.Unsigned_8_Array;
-      Descriptor  : out SCSI.Commands.SPC.INQUIRY_Command_Descriptor)
-      return Boolean;
 
    function Decode_MODE_SENSE_6
      (CDB_Storage : A0B.Types.Arrays.Unsigned_8_Array;
@@ -141,10 +137,11 @@ package body Target.Handler is
    end record;
 
    type SCSI_Decoder is
-     new SCSI.Decoders.SBC.READ_6.READ_6_Decoder
-     and SCSI.Decoders.SBC.READ_10.READ_10_Decoder
-     and SCSI.Decoders.SBC.WRITE_6.WRITE_6_Decoder
-     and SCSI.Decoders.SBC.WRITE_10.WRITE_10_Decoder with null record;
+     new SCSI.Decoders.SPC.INQUIRY.INQUIRY_Decoder
+       and SCSI.Decoders.SBC.READ_6.READ_6_Decoder
+       and SCSI.Decoders.SBC.READ_10.READ_10_Decoder
+       and SCSI.Decoders.SBC.WRITE_6.WRITE_6_Decoder
+       and SCSI.Decoders.SBC.WRITE_10.WRITE_10_Decoder with null record;
 
    overriding function Length_Check_Mode
      (Self : SCSI_Decoder) return SCSI.Decoders.Length_Check_Modes;
@@ -271,74 +268,6 @@ package body Target.Handler is
                Data_Length     => Data_Length);
       end case;
    end Data_Out;
-
-   --------------------
-   -- Decode_INQUIRY --
-   --------------------
-
-   function Decode_INQUIRY
-     (CDB_Storage : A0B.Types.Arrays.Unsigned_8_Array;
-      Descriptor  : out SCSI.Commands.SPC.INQUIRY_Command_Descriptor)
-      return Boolean
-   is
-      use type A0B.Types.Reserved_1;
-      use type A0B.Types.Reserved_6;
-      use type SCSI.SPC5.VPD_Page_Code;
-
-   begin
-      case Length_Check is
-         when Default =>
-            if CDB_Storage'Length /= SCSI.SPC5.CDB.INQUIRY_CDB_Length then
-               return Failure_INVALID_FIELD_IN_CDB;
-            end if;
-
-         when USB_MSC_BOOT =>
-            if CDB_Storage'Length /= SCSI.SPC5.CDB.INQUIRY_CDB_Length
-              and CDB_Storage'Length /= USB_MSC_BOOT_CDB_Length
-            then
-               return Failure_INVALID_FIELD_IN_CDB;
-            end if;
-
-         when iSCSI =>
-            if CDB_Storage'Length /= iSCSI_CDB_Minumum_Length then
-               return Failure_INVALID_FIELD_IN_CDB;
-            end if;
-      end case;
-
-      declare
-         CDB : constant SCSI.SPC5.CDB.INQUIRY_CDB
-           with Import, Address => CDB_Storage'Address;
-
-      begin
-         --  Reserved fields
-
-         if CDB.Reserved_1_7_2 /= A0B.Types.Zero then
-            return Failure_INVALID_FIELD_IN_CDB;
-         end if;
-
-         --  Obsolete fields
-
-         if CDB.Obsolete_1_1_1 /= A0B.Types.Zero then
-            return Failure_INVALID_FIELD_IN_CDB;
-         end if;
-
-         --  PAGE_CODE can be specified for EVPD only
-
-         if CDB.PAGE_CODE /= 0 and CDB.EVPD = False then
-            return Failure_INVALID_FIELD_IN_CDB;
-         end if;
-
-         --  XXX CONTROL is not validated/decoded
-
-         Descriptor :=
-           (EVPD              => CDB.EVPD,
-            PAGE_CODE         => CDB.PAGE_CODE,
-            ALLOCATION_LENGTH =>
-              A0B.Types.Unsigned_32 (CDB.ALLOCATION_LENGTH.Value));
-      end;
-
-      return True;
-   end Decode_INQUIRY;
 
    -------------------------
    -- Decode_MODE_SENSE_6 --
@@ -1020,7 +949,7 @@ package body Target.Handler is
                   Descriptor : SCSI.Commands.SPC.INQUIRY_Command_Descriptor;
 
                begin
-                  if Decode_INQUIRY (CDB_Storage, Descriptor) then
+                  if Decoder.Decode_INQUIRY (CDB_Storage, Descriptor) then
                      Execute_INQUIRY (Descriptor);
                   end if;
                end;
