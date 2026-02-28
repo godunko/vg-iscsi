@@ -20,6 +20,7 @@ with SCSI.Decoders.SBC.WRITE_6;
 with SCSI.Decoders.SBC.WRITE_10;
 with SCSI.Decoders.SPC.INQUIRY;
 with SCSI.Decoders.SPC.MODE_SENSE_6;
+with SCSI.Decoders.SPC.REPORT_LUNS;
 with SCSI.SBC4.CDB;
 with SCSI.SBC4.Data;
 with SCSI.SPC5.CDB;
@@ -37,11 +38,6 @@ package body Target.Handler is
    function Decode_READ_CAPACITY_16
      (CDB_Storage : SCSI.SPC5.CDB.SERVICE_ACTION_IN_16_CDB;
       Descriptor  : out SCSI.Commands.SBC.READ_CAPACITY_Command_Descriptor)
-      return Boolean;
-
-   function Decode_REPORT_LUNS
-     (CDB_Storage : A0B.Types.Arrays.Unsigned_8_Array;
-      Descriptor  : out SCSI.Commands.SPC.REPORT_LUNS_Command_Descriptor)
       return Boolean;
 
    function Decode_TEST_UNIT_READY
@@ -137,6 +133,7 @@ package body Target.Handler is
        and SCSI.Decoders.SPC.MODE_SENSE_6.MODE_SENSE_6_Decoder
        and SCSI.Decoders.SBC.READ_6.READ_6_Decoder
        and SCSI.Decoders.SBC.READ_10.READ_10_Decoder
+       and SCSI.Decoders.SPC.REPORT_LUNS.REPORT_LUNS_Decoder
        and SCSI.Decoders.SBC.WRITE_6.WRITE_6_Decoder
        and SCSI.Decoders.SBC.WRITE_10.WRITE_10_Decoder with null record;
 
@@ -315,54 +312,6 @@ package body Target.Handler is
 
       return True;
    end Decode_READ_CAPACITY_16;
-
-   ------------------------
-   -- Decode_REPORT_LUNS --
-   ------------------------
-
-   function Decode_REPORT_LUNS
-     (CDB_Storage : A0B.Types.Arrays.Unsigned_8_Array;
-      Descriptor  : out SCSI.Commands.SPC.REPORT_LUNS_Command_Descriptor)
-      return Boolean
-   is
-      use type A0B.Types.Reserved_8;
-
-   begin
-      case Length_Check is
-         when Default | USB_MSC_BOOT =>
-            if CDB_Storage'Length /= SCSI.SPC5.CDB.REPORT_LUNS_CDB_Length then
-               return Failure_INVALID_FIELD_IN_CDB;
-            end if;
-
-         when iSCSI =>
-            if CDB_Storage'Length /= iSCSI_CDB_Minumum_Length then
-               return Failure_INVALID_FIELD_IN_CDB;
-            end if;
-      end case;
-
-      declare
-         CDB : constant SCSI.SPC5.CDB.REPORT_LUNS_CDB
-           with Import, Address => CDB_Storage'Address;
-
-      begin
-         if CDB.Reserved_1 /= A0B.Types.Zero
-           or CDB.Reserved_3 /= A0B.Types.Zero
-           or CDB.Reserved_4 /= A0B.Types.Zero
-           or CDB.Reserved_5 /= A0B.Types.Zero
-           or CDB.Reserved_10 /= A0B.Types.Zero
-         then
-            return Failure_INVALID_FIELD_IN_CDB;
-         end if;
-
-         --  XXX CONTROL is not validated/decoded
-
-         Descriptor :=
-           (ALLOCATION_LENGTH => CDB.ALLOCATION_LENGTH.Value,
-            SELECT_REPORT     => CDB.SELECT_REPORT);
-      end;
-
-      return True;
-   end Decode_REPORT_LUNS;
 
    ----------------------------
    -- Decode_TEST_UNIT_READY --
@@ -936,7 +885,7 @@ package body Target.Handler is
                     SCSI.Commands.SPC.REPORT_LUNS_Command_Descriptor;
 
                begin
-                  if Decode_REPORT_LUNS (CDB_Storage, Descriptor) then
+                  if Decoder.Decode_REPORT_LUNS (CDB_Storage, Descriptor) then
                      Execute_REPORT_LUNS (Descriptor);
                   end if;
                end;
