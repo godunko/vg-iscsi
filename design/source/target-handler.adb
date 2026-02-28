@@ -17,6 +17,7 @@ with SCSI.Commands.SPC;
 with SCSI.Decoders.SBC.READ_6;
 with SCSI.Decoders.SBC.READ_10;
 with SCSI.Decoders.SBC.WRITE_6;
+with SCSI.Decoders.SBC.WRITE_10;
 with SCSI.SBC4.CDB;
 with SCSI.SBC4.Data;
 with SCSI.SPC5.CDB;
@@ -54,11 +55,6 @@ package body Target.Handler is
    function Decode_TEST_UNIT_READY
      (CDB_Storage : A0B.Types.Arrays.Unsigned_8_Array;
       Descriptor  : out SCSI.Commands.SPC.TEST_UNIT_READY_Command_Descriptor)
-      return Boolean;
-
-   function Decode_WRITE_10
-     (CDB_Storage : A0B.Types.Arrays.Unsigned_8_Array;
-      Descriptor  : out SCSI.Commands.SBC.WRITE_Command_Descriptor)
       return Boolean;
 
    procedure Failure_INVALID_COMMAND_OPERATION_CODE;
@@ -147,7 +143,8 @@ package body Target.Handler is
    type SCSI_Decoder is
      new SCSI.Decoders.SBC.READ_6.READ_6_Decoder
      and SCSI.Decoders.SBC.READ_10.READ_10_Decoder
-     and SCSI.Decoders.SBC.WRITE_6.WRITE_6_Decoder with null record;
+     and SCSI.Decoders.SBC.WRITE_6.WRITE_6_Decoder
+     and SCSI.Decoders.SBC.WRITE_10.WRITE_10_Decoder with null record;
 
    overriding function Length_Check_Mode
      (Self : SCSI_Decoder) return SCSI.Decoders.Length_Check_Modes;
@@ -546,70 +543,6 @@ package body Target.Handler is
 
       return True;
    end Decode_TEST_UNIT_READY;
-
-   ---------------------
-   -- Decode_WRITE_10 --
-   ---------------------
-
-   function Decode_WRITE_10
-     (CDB_Storage : A0B.Types.Arrays.Unsigned_8_Array;
-      Descriptor  : out SCSI.Commands.SBC.WRITE_Command_Descriptor)
-      return Boolean
-   is
-      use type A0B.Types.Reserved_1;
-      use type A0B.Types.Reserved_2;
-
-   begin
-      case Length_Check is
-         when Default =>
-            if CDB_Storage'Length /= SCSI.SBC4.CDB.WRITE_10_CDB_Length then
-               return Failure_INVALID_FIELD_IN_CDB;
-            end if;
-
-         when USB_MSC_BOOT =>
-            if CDB_Storage'Length /= SCSI.SBC4.CDB.WRITE_10_CDB_Length
-              and CDB_Storage'Length /= USB_MSC_BOOT_CDB_Length
-            then
-               return Failure_INVALID_FIELD_IN_CDB;
-            end if;
-
-         when iSCSI =>
-            if CDB_Storage'Length /= iSCSI_CDB_Minumum_Length then
-               return Failure_INVALID_FIELD_IN_CDB;
-            end if;
-      end case;
-
-      declare
-         CDB : constant SCSI.SBC4.CDB.WRITE_10_CDB
-           with Import, Address => CDB_Storage'Address;
-
-      begin
-         if CDB.Reserved_1_2_2 /= A0B.Types.Zero
-           or CDB.Reserved_6_7_6 /= A0B.Types.Zero
-         then
-            return Failure_INVALID_FIELD_IN_CDB;
-         end if;
-
-         if CDB.Obsolete_1_0_0 /= A0B.Types.Zero
-           or CDB.Obsolete_1_1_1 /= A0B.Types.Zero
-         then
-            return Failure_INVALID_FIELD_IN_CDB;
-         end if;
-
-         Descriptor :=
-           (GROUP_NUMBER          => CDB.GROUP_NUMBER,
-            LOGICAL_BLOCK_ADDRESS =>
-              A0B.Types.Unsigned_64 (CDB.LOGICAL_BLOCK_ADDRESS.Value),
-            TRANSFER_LENGTH       =>
-              A0B.Types.Unsigned_32 (CDB.TRANSFER_LENGTH.Value),
-            WRPROTECT             => CDB.WRPROTECT,
-            DPO                   => CDB.DPO,
-            FUA                   => CDB.FUA,
-            DLD                   => 0);  --  Not present in WRITE (10)
-      end;
-
-      return True;
-   end Decode_WRITE_10;
 
    ----------------------------
    -- Encode_MODE_SENSE_Data --
@@ -1195,7 +1128,7 @@ package body Target.Handler is
                   Descriptor : SCSI.Commands.SBC.WRITE_Command_Descriptor;
 
                begin
-                  if Decode_WRITE_10 (CDB_Storage, Descriptor) then
+                  if Decoder.Decode_WRITE_10 (CDB_Storage, Descriptor) then
                      Execute_WRITE (Descriptor);
                   end if;
                end;
