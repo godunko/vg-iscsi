@@ -520,6 +520,156 @@ package body Target.Handler is
    end Encode_Supported_VPD_Pages;
 
    ---------------------
+   -- Execute_Command --
+   ---------------------
+
+   procedure Execute_Command
+     (CDB_Storage : A0B.Types.Arrays.Unsigned_8_Array;
+      On_Finished : A0B.Callbacks.Callback)
+   is
+      Decoder : SCSI_Decoder;
+
+   begin
+      if CDB_Storage'Length = 0 then
+         raise Program_Error;
+         --  XXX INVALID_FIELD_IN_CDB
+
+         --  return;
+      end if;
+
+      declare
+         Operation : constant SCSI.SAM5.OPERATION_CODE
+           with Import, Address => CDB_Storage'Address;
+
+      begin
+         case Operation is
+            when SCSI.SPC5.INQUIRY =>
+               declare
+                  Descriptor : SCSI.Commands.SPC.INQUIRY_Command_Descriptor;
+
+               begin
+                  if Decoder.Decode_INQUIRY (CDB_Storage, Descriptor) then
+                     Execute_INQUIRY (Descriptor);
+                  end if;
+               end;
+
+            when SCSI.SPC5.MODE_SENSE_6 =>
+               declare
+                  Descriptor :
+                    SCSI.Commands.SPC.MODE_SENSE_Command_Descriptor;
+
+               begin
+                  if Decoder.Decode_MODE_SENSE_6 (CDB_Storage, Descriptor) then
+                     Execute_MODE_SENSE (Descriptor);
+                  end if;
+               end;
+
+            when SCSI.SBC4.READ_6 =>
+               declare
+                  Descriptor : SCSI.Commands.SBC.READ_Command_Descriptor;
+
+               begin
+                  if Decoder.Decode_READ_6 (CDB_Storage, Descriptor) then
+                     Execute_READ (Descriptor);
+                  end if;
+               end;
+
+            when SCSI.SBC4.READ_10 =>
+               declare
+                  Descriptor : SCSI.Commands.SBC.READ_Command_Descriptor;
+
+               begin
+                  if Decoder.Decode_READ_10 (CDB_Storage, Descriptor) then
+                     Execute_READ (Descriptor);
+                  end if;
+               end;
+
+            when SCSI.SPC5.REPORT_LUNS =>
+               declare
+                  Descriptor :
+                    SCSI.Commands.SPC.REPORT_LUNS_Command_Descriptor;
+
+               begin
+                  if Decoder.Decode_REPORT_LUNS (CDB_Storage, Descriptor) then
+                     Execute_REPORT_LUNS (Descriptor);
+                  end if;
+               end;
+
+            when SCSI.SPC5.SERVICE_ACTION_IN_16 =>
+               if CDB_Storage'Length
+                    /= SCSI.SPC5.CDB.SERVICE_ACTION_IN_16_CDB_Length
+               then
+                  --  Sense := SCSI.SPC5.INVALID_FIELD_IN_CDB;
+
+                  raise Program_Error;
+               end if;
+
+               declare
+                  CDB : constant SCSI.SPC5.CDB.SERVICE_ACTION_IN_16_CDB
+                    with Import, Address => CDB_Storage'Address;
+
+               begin
+                  case CDB.SERVICE_ACTION is
+                     when SCSI.SBC4.READ_CAPACITY_16 =>
+                        declare
+                           Descriptor :
+                             SCSI.Commands.SBC.READ_CAPACITY_Command_Descriptor;
+
+                        begin
+                           if Decode_READ_CAPACITY_16 (CDB, Descriptor) then
+                              Execute_READ_CAPACITY (Descriptor);
+                           end if;
+                        end;
+
+                     when others =>
+                        raise Program_Error;
+                  end case;
+               end;
+
+            when SCSI.SPC5.TEST_UNIT_READY =>
+               declare
+                  Descriptor :
+                    SCSI.Commands.SPC.TEST_UNIT_READY_Command_Descriptor;
+
+               begin
+                  if Decoder.Decode_TEST_UNIT_READY (CDB_Storage, Descriptor) then
+                     Execute_TEST_UNIT_READY (Descriptor);
+
+                  else
+                     raise Program_Error;
+                     --  Command_Decode_Failure (Sense);
+                  end if;
+               end;
+
+            when SCSI.SBC4.WRITE_6 =>
+               declare
+                  Descriptor : SCSI.Commands.SBC.WRITE_Command_Descriptor;
+
+               begin
+                  if Decoder.Decode_WRITE_6 (CDB_Storage, Descriptor) then
+                     Execute_WRITE (Descriptor);
+                  end if;
+               end;
+
+            when SCSI.SBC4.WRITE_10 =>
+               declare
+                  Descriptor : SCSI.Commands.SBC.WRITE_Command_Descriptor;
+
+               begin
+                  if Decoder.Decode_WRITE_10 (CDB_Storage, Descriptor) then
+                     Execute_WRITE (Descriptor);
+                  end if;
+               end;
+
+            when others =>
+               Failure_INVALID_COMMAND_OPERATION_CODE;
+         end case;
+      end;
+
+      A0B.Callbacks.Emit (On_Finished);
+   end Execute_Command;
+
+   ---------------------
    -- Execute_INQUIRY --
    ---------------------
 
@@ -754,153 +904,6 @@ package body Target.Handler is
    begin
       return SCSI.Decoders.iSCSI;
    end Length_Check_Mode;
-
-   ---------------------
-   -- Process_Command --
-   ---------------------
-
-   procedure Process_Command
-     (CDB_Storage : A0B.Types.Arrays.Unsigned_8_Array)
-   is
-      Decoder : SCSI_Decoder;
-
-   begin
-      if CDB_Storage'Length = 0 then
-         raise Program_Error;
-         --  XXX INVALID_FIELD_IN_CDB
-
-         --  return;
-      end if;
-
-      declare
-         Operation : constant SCSI.SAM5.OPERATION_CODE
-           with Import, Address => CDB_Storage'Address;
-
-      begin
-         case Operation is
-            when SCSI.SPC5.INQUIRY =>
-               declare
-                  Descriptor : SCSI.Commands.SPC.INQUIRY_Command_Descriptor;
-
-               begin
-                  if Decoder.Decode_INQUIRY (CDB_Storage, Descriptor) then
-                     Execute_INQUIRY (Descriptor);
-                  end if;
-               end;
-
-            when SCSI.SPC5.MODE_SENSE_6 =>
-               declare
-                  Descriptor :
-                    SCSI.Commands.SPC.MODE_SENSE_Command_Descriptor;
-
-               begin
-                  if Decoder.Decode_MODE_SENSE_6 (CDB_Storage, Descriptor) then
-                     Execute_MODE_SENSE (Descriptor);
-                  end if;
-               end;
-
-            when SCSI.SBC4.READ_6 =>
-               declare
-                  Descriptor : SCSI.Commands.SBC.READ_Command_Descriptor;
-
-               begin
-                  if Decoder.Decode_READ_6 (CDB_Storage, Descriptor) then
-                     Execute_READ (Descriptor);
-                  end if;
-               end;
-
-            when SCSI.SBC4.READ_10 =>
-               declare
-                  Descriptor : SCSI.Commands.SBC.READ_Command_Descriptor;
-
-               begin
-                  if Decoder.Decode_READ_10 (CDB_Storage, Descriptor) then
-                     Execute_READ (Descriptor);
-                  end if;
-               end;
-
-            when SCSI.SPC5.REPORT_LUNS =>
-               declare
-                  Descriptor :
-                    SCSI.Commands.SPC.REPORT_LUNS_Command_Descriptor;
-
-               begin
-                  if Decoder.Decode_REPORT_LUNS (CDB_Storage, Descriptor) then
-                     Execute_REPORT_LUNS (Descriptor);
-                  end if;
-               end;
-
-            when SCSI.SPC5.SERVICE_ACTION_IN_16 =>
-               if CDB_Storage'Length
-                    /= SCSI.SPC5.CDB.SERVICE_ACTION_IN_16_CDB_Length
-               then
-                  --  Sense := SCSI.SPC5.INVALID_FIELD_IN_CDB;
-
-                  raise Program_Error;
-               end if;
-
-               declare
-                  CDB : constant SCSI.SPC5.CDB.SERVICE_ACTION_IN_16_CDB
-                    with Import, Address => CDB_Storage'Address;
-
-               begin
-                  case CDB.SERVICE_ACTION is
-                     when SCSI.SBC4.READ_CAPACITY_16 =>
-                        declare
-                           Descriptor :
-                             SCSI.Commands.SBC.READ_CAPACITY_Command_Descriptor;
-
-                        begin
-                           if Decode_READ_CAPACITY_16 (CDB, Descriptor) then
-                              Execute_READ_CAPACITY (Descriptor);
-                           end if;
-                        end;
-
-                     when others =>
-                        raise Program_Error;
-                  end case;
-               end;
-
-            when SCSI.SPC5.TEST_UNIT_READY =>
-               declare
-                  Descriptor :
-                    SCSI.Commands.SPC.TEST_UNIT_READY_Command_Descriptor;
-
-               begin
-                  if Decoder.Decode_TEST_UNIT_READY (CDB_Storage, Descriptor) then
-                     Execute_TEST_UNIT_READY (Descriptor);
-
-                  else
-                     raise Program_Error;
-                     --  Command_Decode_Failure (Sense);
-                  end if;
-               end;
-
-            when SCSI.SBC4.WRITE_6 =>
-               declare
-                  Descriptor : SCSI.Commands.SBC.WRITE_Command_Descriptor;
-
-               begin
-                  if Decoder.Decode_WRITE_6 (CDB_Storage, Descriptor) then
-                     Execute_WRITE (Descriptor);
-                  end if;
-               end;
-
-            when SCSI.SBC4.WRITE_10 =>
-               declare
-                  Descriptor : SCSI.Commands.SBC.WRITE_Command_Descriptor;
-
-               begin
-                  if Decoder.Decode_WRITE_10 (CDB_Storage, Descriptor) then
-                     Execute_WRITE (Descriptor);
-                  end if;
-               end;
-
-            when others =>
-               Failure_INVALID_COMMAND_OPERATION_CODE;
-         end case;
-      end;
-   end Process_Command;
 
    ----------------------
    -- Read_Data_Length --

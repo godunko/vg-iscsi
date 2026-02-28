@@ -11,6 +11,7 @@ with Ada.Text_IO; use Ada.Text_IO;
 with GNAT.Sockets;
 with System.Storage_Elements;
 
+with A0B.Callbacks.Generic_Parameterless;
 with A0B.Types.Arrays;
 with A0B.Types.Big_Endian;
 
@@ -58,6 +59,11 @@ procedure Target.Driver is
    procedure Process_SCSI_Data_Out;
 
    procedure Dispatch_PDU;
+
+   procedure On_Command_Execute_Finished;
+
+   package On_Command_Execute_Finished_Callbacks is
+     new A0B.Callbacks.Generic_Parameterless (On_Command_Execute_Finished);
 
    Listen_Address : constant GNAT.Sockets.Sock_Addr_Type :=
      (Family => GNAT.Sockets.Family_Inet,
@@ -162,6 +168,28 @@ procedure Target.Driver is
          raise Program_Error;
       end if;
    end Dispatch_PDU;
+
+   ---------------------------------
+   -- On_Command_Execute_Finished --
+   ---------------------------------
+
+   procedure On_Command_Execute_Finished is
+      use type SCSI.SAM5.STATUS;
+
+   begin
+      if Target.Handler.Status /= SCSI.SAM5.GOOD then
+         State := Response;
+
+      elsif Current_Command.Write then
+         State := Ready_To_Transfer;
+
+      elsif Current_Command.Read then
+         State := Data_In;
+
+      else
+         State := Response;
+      end if;
+   end On_Command_Execute_Finished;
 
    ---------------------------
    -- Process_Login_Request --
@@ -323,8 +351,6 @@ procedure Target.Driver is
    --------------------------
 
    procedure Process_SCSI_Command is
-      use type SCSI.SAM5.STATUS;
-
       Header : iSCSI.PDUs.SCSI_Command_Header
         with Import, Address => Current_PDU.Header_Storage;
 
@@ -376,20 +402,8 @@ procedure Target.Driver is
 
       Target.Handler.Process_Command
         (A0B.Types.Arrays.Unsigned_8_Array
-           (Header.SCSI_Command_Descriptor_Block));
-
-      if Target.Handler.Status /= SCSI.SAM5.GOOD then
-         State := Response;
-
-      elsif Current_Command.Write then
-         State := Ready_To_Transfer;
-
-      elsif Current_Command.Read then
-         State := Data_In;
-
-      else
-         State := Response;
-      end if;
+           (Header.SCSI_Command_Descriptor_Block),
+         On_Command_Execute_Finished_Callbacks.Create_Callback);
    end Process_SCSI_Command;
 
    ---------------------------
