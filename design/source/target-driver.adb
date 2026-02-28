@@ -518,7 +518,12 @@ procedure Target.Driver is
       Data_Length : A0B.Types.Unsigned_32;
 
    begin
-      Target.Handler.Data_In (Response_Storage'Address, Data_Length);
+      Data_In_Buffer.Reset;
+      Target.Handler.Data_In (Data_In_Buffer);
+
+      Data_Length :=
+        A0B.Types.Unsigned_32'Min
+          (Data_In_Buffer.Allocation_Length, Data_In_Buffer.Length);
 
       Current_Command.Read_Data_Transfer_Length := @ + Data_Length;
 
@@ -916,7 +921,7 @@ begin
    SCSI.Buffers.Initialize
      (Data_Out_Buffer, Data_Storage'Address, Data_Storage'Length);
    SCSI.Buffers.Initialize
-     (Data_In_Buffer, Data_Storage'Address, Response_Storage'Length);
+     (Data_In_Buffer, Response_Storage'Address, Response_Storage'Length);
 
    loop
       case State is

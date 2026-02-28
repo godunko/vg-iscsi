@@ -20,9 +20,7 @@ package Target.Handler is
       Data_In_Buffer  : SCSI.Buffers.Data_Buffer;
       On_Finished     : A0B.Callbacks.Callback);
 
-   procedure Data_In
-     (Storage_Address : System.Address;
-      Data_Length     : out A0B.Types.Unsigned_32);
+   procedure Data_In (Data_In_Buffer : aliased in out SCSI.Buffers.Data_Buffer);
 
    procedure Data_Out
      (Buffer_Offset   : A0B.Types.Unsigned_32;

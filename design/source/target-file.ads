@@ -8,6 +8,7 @@ with System;
 
 with A0B.Types;
 
+with SCSI.Buffers;
 with SCSI.Commands.SBC;
 
 package Target.File is
@@ -18,9 +19,8 @@ package Target.File is
      (Transfer_Length : A0B.Types.Unsigned_32) return A0B.Types.Unsigned_64;
 
    procedure Read
-     (Descriptor      : SCSI.Commands.SBC.READ_Command_Descriptor;
-      Storage_Address : System.Address;
-      Data_Length     : out A0B.Types.Unsigned_32);
+     (Descriptor     : SCSI.Commands.SBC.READ_Command_Descriptor;
+      Data_In_Buffer : in out SCSI.Buffers.Data_Buffer'Class);
 
    procedure Write
      (Descriptor      : SCSI.Commands.SBC.WRITE_Command_Descriptor;

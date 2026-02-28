@@ -92,38 +92,44 @@ package body Target.File is
    ----------
 
    procedure Read
-     (Descriptor      : SCSI.Commands.SBC.READ_Command_Descriptor;
-      Storage_Address : System.Address;
-      Data_Length     : out A0B.Types.Unsigned_32)
+     (Descriptor     : SCSI.Commands.SBC.READ_Command_Descriptor;
+      Data_In_Buffer : in out SCSI.Buffers.Data_Buffer'Class)
    is
       use type A0B.Types.Unsigned_32;
       use type A0B.Types.Unsigned_64;
       use type Interfaces.C_Streams.size_t;
 
+      Length  : constant A0B.Types.Unsigned_32 :=
+        Descriptor.TRANSFER_LENGTH * Block_Length;
+      Address : System.Address;
+
    begin
       Open_File;
 
-      if Interfaces.C_Streams.fseek64
-        (File,
-         Interfaces.C_Streams.int64
-           (Descriptor.LOGICAL_BLOCK_ADDRESS * Block_Length),
-         Interfaces.C_Streams.SEEK_SET) /= 0
-      then
+      if Data_In_Buffer.Allocate (Length, Address) then
+         if Interfaces.C_Streams.fseek64
+           (File,
+            Interfaces.C_Streams.int64
+              (Descriptor.LOGICAL_BLOCK_ADDRESS * Block_Length),
+            Interfaces.C_Streams.SEEK_SET) /= 0
+         then
+            raise Program_Error;
+         end if;
+
+         if Interfaces.C_Streams.fread
+           (buffer => Address,
+            index  => 0,
+            size   => Block_Length,
+            count  => Interfaces.C_Streams.size_t (Descriptor.TRANSFER_LENGTH),
+            stream => File)
+              /= Interfaces.C_Streams.size_t (Descriptor.TRANSFER_LENGTH)
+         then
+            raise Program_Error;
+         end if;
+
+      else
          raise Program_Error;
       end if;
-
-      if Interfaces.C_Streams.fread
-        (buffer => Storage_Address,
-         index  => 0,
-         size   => Block_Length,
-         count  => Interfaces.C_Streams.size_t (Descriptor.TRANSFER_LENGTH),
-         stream => File)
-           /= Interfaces.C_Streams.size_t (Descriptor.TRANSFER_LENGTH)
-      then
-         raise Program_Error;
-      end if;
-
-      Data_Length := Descriptor.TRANSFER_LENGTH * Block_Length;
    end Read;
 
    -----------
