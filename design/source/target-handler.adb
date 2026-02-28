@@ -16,6 +16,7 @@ with SCSI.Commands.SBC;
 with SCSI.Commands.SPC;
 with SCSI.Decoders.SBC.READ_6;
 with SCSI.Decoders.SBC.READ_10;
+with SCSI.Decoders.SBC.WRITE_6;
 with SCSI.SBC4.CDB;
 with SCSI.SBC4.Data;
 with SCSI.SPC5.CDB;
@@ -53,11 +54,6 @@ package body Target.Handler is
    function Decode_TEST_UNIT_READY
      (CDB_Storage : A0B.Types.Arrays.Unsigned_8_Array;
       Descriptor  : out SCSI.Commands.SPC.TEST_UNIT_READY_Command_Descriptor)
-      return Boolean;
-
-   function Decode_WRITE_6
-     (CDB_Storage : A0B.Types.Arrays.Unsigned_8_Array;
-      Descriptor  : out SCSI.Commands.SBC.WRITE_Command_Descriptor)
       return Boolean;
 
    function Decode_WRITE_10
@@ -150,7 +146,8 @@ package body Target.Handler is
 
    type SCSI_Decoder is
      new SCSI.Decoders.SBC.READ_6.READ_6_Decoder
-     and SCSI.Decoders.SBC.READ_10.READ_10_Decoder with null record;
+     and SCSI.Decoders.SBC.READ_10.READ_10_Decoder
+     and SCSI.Decoders.SBC.WRITE_6.WRITE_6_Decoder with null record;
 
    overriding function Length_Check_Mode
      (Self : SCSI_Decoder) return SCSI.Decoders.Length_Check_Modes;
@@ -549,58 +546,6 @@ package body Target.Handler is
 
       return True;
    end Decode_TEST_UNIT_READY;
-
-   --------------------
-   -- Decode_WRITE_6 --
-   --------------------
-
-   function Decode_WRITE_6
-     (CDB_Storage : A0B.Types.Arrays.Unsigned_8_Array;
-      Descriptor  : out SCSI.Commands.SBC.WRITE_Command_Descriptor)
-      return Boolean
-   is
-      use type A0B.Types.Reserved_3;
-      use type A0B.Types.Unsigned_8;
-
-   begin
-      case Length_Check is
-         when Default | USB_MSC_BOOT =>
-            if CDB_Storage'Length /= SCSI.SBC4.CDB.WRITE_6_CDB_Length then
-               return Failure_INVALID_FIELD_IN_CDB;
-            end if;
-
-         when iSCSI =>
-            if CDB_Storage'Length /= iSCSI_CDB_Minumum_Length then
-               return Failure_INVALID_FIELD_IN_CDB;
-            end if;
-      end case;
-
-      declare
-         CDB : SCSI.SBC4.CDB.WRITE_6_CDB
-           with Import, Address => CDB_Storage'Address;
-
-      begin
-         if SCSI.SBC4.CDB.Reserved_1_7_5 (CDB) /= A0B.Types.Zero then
-            return Failure_INVALID_FIELD_IN_CDB;
-         end if;
-
-         --  XXX CONTROL is not validated/decoded
-
-         Descriptor :=
-           (GROUP_NUMBER          => 0,      --  Not present in WRITE(6)
-            LOGICAL_BLOCK_ADDRESS => SCSI.SBC4.CDB.LOGICAL_BLOCK_ADDRESS (CDB),
-            TRANSFER_LENGTH =>
-              (if CDB.TRANSFER_LENGTH = 0
-                 then 256
-                 else A0B.Types.Unsigned_32 (CDB.TRANSFER_LENGTH)),
-            WRPROTECT             => 0,      --  Not present in WRITE(6)
-            DPO                   => False,  --  Not present in WRITE(6)
-            FUA                   => False,  --  Not present in WRITE(6)
-            DLD                   => 0);     --  Not present in WRITE(6)
-      end;
-
-      return True;
-   end Decode_WRITE_6;
 
    ---------------------
    -- Decode_WRITE_10 --
@@ -1240,7 +1185,7 @@ package body Target.Handler is
                   Descriptor : SCSI.Commands.SBC.WRITE_Command_Descriptor;
 
                begin
-                  if Decode_WRITE_6 (CDB_Storage, Descriptor) then
+                  if Decoder.Decode_WRITE_6 (CDB_Storage, Descriptor) then
                      Execute_WRITE (Descriptor);
                   end if;
                end;
