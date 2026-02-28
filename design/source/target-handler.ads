@@ -17,7 +17,7 @@ package Target.Handler is
    procedure Execute_Command
      (CDB_Storage     : A0B.Types.Arrays.Unsigned_8_Array;
       Data_Out_Buffer : SCSI.Buffers.Data_Buffer;
-      Data_In_Buffer  : SCSI.Buffers.Data_Buffer;
+      Data_In_Buffer  : aliased in out SCSI.Buffers.Data_Buffer;
       On_Finished     : A0B.Callbacks.Callback);
 
    procedure Data_In (Data_In_Buffer : aliased in out SCSI.Buffers.Data_Buffer);

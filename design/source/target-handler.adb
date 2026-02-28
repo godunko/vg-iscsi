@@ -41,7 +41,8 @@ package body Target.Handler is
    function Failure_INVALID_FIELD_IN_CDB return Boolean;
 
    procedure Execute_INQUIRY
-     (Descriptor : SCSI.Commands.SPC.INQUIRY_Command_Descriptor);
+     (Descriptor     : SCSI.Commands.SPC.INQUIRY_Command_Descriptor;
+      Data_In_Buffer : aliased in out SCSI.Buffers.Data_Buffer);
 
    procedure Execute_MODE_SENSE
      (Descriptor : SCSI.Commands.SPC.MODE_SENSE_Command_Descriptor);
@@ -157,15 +158,7 @@ package body Target.Handler is
             raise Program_Error;
 
          when Inquiry =>
-            Data_In_Buffer.Set_Allocation_Length
-              (Operation.Inquiry.ALLOCATION_LENGTH);
-
-            if Operation.Inquiry.EVPD then
-               VPD (Operation.Inquiry.PAGE_CODE) (Data_In_Buffer);
-
-            else
-               Encode_Standard_INQUIRY_Data (Data_In_Buffer);
-            end if;
+            raise Program_Error;
 
          when Mode_Sense =>
             Data_In_Buffer.Set_Allocation_Length
@@ -519,7 +512,7 @@ package body Target.Handler is
    procedure Execute_Command
      (CDB_Storage     : A0B.Types.Arrays.Unsigned_8_Array;
       Data_Out_Buffer : SCSI.Buffers.Data_Buffer;
-      Data_In_Buffer  : SCSI.Buffers.Data_Buffer;
+      Data_In_Buffer  : aliased in out SCSI.Buffers.Data_Buffer;
       On_Finished     : A0B.Callbacks.Callback)
    is
       Decoder : SCSI_Decoder;
@@ -544,7 +537,7 @@ package body Target.Handler is
 
                begin
                   if Decoder.Decode_INQUIRY (CDB_Storage, Descriptor) then
-                     Execute_INQUIRY (Descriptor);
+                     Execute_INQUIRY (Descriptor, Data_In_Buffer);
                   end if;
                end;
 
@@ -669,7 +662,8 @@ package body Target.Handler is
    ---------------------
 
    procedure Execute_INQUIRY
-     (Descriptor : SCSI.Commands.SPC.INQUIRY_Command_Descriptor) is
+     (Descriptor     : SCSI.Commands.SPC.INQUIRY_Command_Descriptor;
+      Data_In_Buffer : aliased in out SCSI.Buffers.Data_Buffer) is
    begin
       Put_Line ("SCSI: INQUIRY EVPD " & Descriptor.EVPD'Image);
       Put_Line ("SCSI: INQUIRY PAGE CODE" & Descriptor.PAGE_CODE'Image);
@@ -686,9 +680,6 @@ package body Target.Handler is
 
             return;
          end if;
-      --
-      --  else
-      --     Operation := (Inquiry, Descriptor);
       end if;
 
       Operation :=
@@ -699,6 +690,23 @@ package body Target.Handler is
          Read_Data_Length  =>
            A0B.Types.Unsigned_64 (Descriptor.ALLOCATION_LENGTH),
          Inquiry           => Descriptor);
+
+      Data_In_Buffer.Set_Allocation_Length
+        (Operation.Inquiry.ALLOCATION_LENGTH);
+
+      if Operation.Inquiry.EVPD then
+         VPD (Operation.Inquiry.PAGE_CODE) (Data_In_Buffer);
+
+      else
+         Encode_Standard_INQUIRY_Data (Data_In_Buffer);
+      end if;
+
+      Operation :=
+        (Kind              => None,
+         Status            => SCSI.SAM5.GOOD,
+         Sense             => SCSI.SPC5.NO_SENSE,
+         Write_Data_Length => 0,
+         Read_Data_Length  => 0);
    end Execute_INQUIRY;
 
    ------------------------

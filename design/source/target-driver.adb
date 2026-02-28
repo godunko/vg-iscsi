@@ -192,7 +192,7 @@ procedure Target.Driver is
             State := Data_In;
 
          else
-            raise Program_Error;
+            Send_Data_In;
          end if;
 
       else
@@ -518,8 +518,9 @@ procedure Target.Driver is
       Data_Length : A0B.Types.Unsigned_32;
 
    begin
-      Data_In_Buffer.Reset;
-      Target.Handler.Data_In (Data_In_Buffer);
+      if Data_In_Buffer.Length = 0 then
+         Target.Handler.Data_In (Data_In_Buffer);
+      end if;
 
       Data_Length :=
         A0B.Types.Unsigned_32'Min
@@ -575,6 +576,7 @@ procedure Target.Driver is
          Put_Line ("  ... done.");
       end;
 
+      Data_In_Buffer.Reset;
       State := Response;
    end Send_Data_In;
 
