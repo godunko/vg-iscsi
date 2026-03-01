@@ -12,7 +12,6 @@ with GNAT.Sockets;
 with System.Storage_Elements;
 
 with A0B.Callbacks.Generic_Parameterless;
-with A0B.Types.Arrays;
 with A0B.Types.Big_Endian;
 
 with iSCSI.PDUs;
@@ -410,8 +409,8 @@ procedure Target.Driver is
       end if;
 
       Target.Handler.Execute_Command
-        (CDB_Storage     => A0B.Types.Arrays.Unsigned_8_Array
-           (Header.SCSI_Command_Descriptor_Block),
+        (CDB_Storage     =>
+           Current_Command.CDB_Storage (0 .. Current_Command.CDB_Length - 1),
          Data_Out_Buffer => Data_Out_Buffer,
          Data_In_Buffer  => Data_In_Buffer,
          On_Finished     =>

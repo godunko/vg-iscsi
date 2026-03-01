@@ -4,7 +4,7 @@
 --  SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 --
 
-with A0B.Types;
+with A0B.Types.Arrays;
 
 with iSCSI.PDUs;
 
@@ -22,6 +22,11 @@ package iSCSI.Target.Commands with Pure is
       Read_Data_Transfer_Length           : A0B.Types.Unsigned_32;
       DataSN                              : A0B.Types.Unsigned_32;
       R2TSN                               : A0B.Types.Unsigned_32;
+      CDB_Storage                         :
+        A0B.Types.Arrays.Unsigned_8_Array (0 .. 31);
+      --  Reserve space for CDB up to 32 bytes length. It is enough for all
+      --  commands defined in SPC-5/SBC-4.
+      CDB_Length                          : A0B.Types.Unsigned_32;
    end record;
 
    procedure Initialize

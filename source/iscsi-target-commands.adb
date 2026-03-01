@@ -12,17 +12,13 @@ package body iSCSI.Target.Commands is
 
    procedure Initialize
      (Self                : out Abstract_Command;
-      SCSI_Command_Header : iSCSI.PDUs.SCSI_Command_Header)
-   is
-      use type A0B.Types.Unsigned_3;
-
+      SCSI_Command_Header : iSCSI.PDUs.SCSI_Command_Header) is
    begin
       --  XXX Not processed fields:
       --    - Final
       --    - Attr
       --    - CmdSN
       --    - ExpStatSN
-      --    - CDB
 
       Self.Logical_Unit_Number        :=
         SCSI_Command_Header.Logical_Unit_Number;
@@ -57,6 +53,10 @@ package body iSCSI.Target.Commands is
          Self.Read_Expected_Data_Transfer_Length  := 0;
       end if;
 
+      Self.CDB_Storage (0 .. 15) :=
+        A0B.Types.Arrays.Unsigned_8_Array
+          (SCSI_Command_Header.SCSI_Command_Descriptor_Block);
+      Self.CDB_Length            := 16;
    end Initialize;
 
 end iSCSI.Target.Commands;
