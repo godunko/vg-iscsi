@@ -16,6 +16,7 @@ with A0B.Types.Arrays;
 with A0B.Types.Big_Endian;
 
 with iSCSI.PDUs;
+with iSCSI.Target.Commands;
 with iSCSI.Target.Login;
 with iSCSI.Text;
 with iSCSI.Types;
@@ -103,20 +104,6 @@ procedure Target.Driver is
       Header_Storage : System.Address;
    end record;
 
-   type Command is record
-      Logical_Unit_Number                 : A0B.Types.Unsigned_64;
-      Immediate                           : Boolean;
-      Write                               : Boolean;
-      Read                                : Boolean;
-      Initiator_Task_Tag                  : A0B.Types.Unsigned_32;
-      Write_Expected_Data_Transfer_Length : A0B.Types.Unsigned_32;
-      Read_Expected_Data_Transfer_Length  : A0B.Types.Unsigned_32;
-      Write_Data_Transfer_Length          : A0B.Types.Unsigned_32;
-      Read_Data_Transfer_Length           : A0B.Types.Unsigned_32;
-      DataSN                              : A0B.Types.Unsigned_32;
-      R2TSN                               : A0B.Types.Unsigned_32;
-   end record;
-
    type Data_Out_Information is record
       Final                        : Boolean;
       Storage_Address              : System.Address;
@@ -125,7 +112,7 @@ procedure Target.Driver is
    end record;
 
    Current_PDU      : PDU;
-   Current_Command  : Command;
+   Current_Command  : iSCSI.Target.Commands.Abstract_Command;
    Current_Data_Out : Data_Out_Information;
 
    -------------------
@@ -416,37 +403,10 @@ procedure Target.Driver is
       Put_Line ("iSCSI ExpStatSN" & Header.ExpStatSN'Image);
       Put_Line ("iSCSI CDB " & Header.SCSI_Command_Descriptor_Block'Image);
 
-      Current_Command.Logical_Unit_Number := Header.Logical_Unit_Number;
-      Current_Command.Immediate           := Header.Immediate;
-      Current_Command.Initiator_Task_Tag  := Header.Initiator_Task_Tag;
+      Current_Command.Initialize (Header);
 
-      Current_Command.Write                      := Header.Write;
-      Current_Command.Read                       := Header.Read;
-      Current_Command.Write_Data_Transfer_Length := 0;
-      Current_Command.Read_Data_Transfer_Length  := 0;
-      Current_Command.DataSN                     := 0;
-      Current_Command.R2TSN                      := 0;
-
-      if Header.Write then
-         Current_Command.Write_Expected_Data_Transfer_Length :=
-           Header.Expected_Data_Transfer_Length;
-
-         if Header.Read then
-            --  XXX Process Bidirectional Read Expected Data Transfer Length AHS
-            raise Program_Error;
-
-         else
-            Current_Command.Read_Expected_Data_Transfer_Length := 0;
-         end if;
-
-      elsif Header.Read then
-         Current_Command.Write_Expected_Data_Transfer_Length := 0;
-         Current_Command.Read_Expected_Data_Transfer_Length :=
-           Header.Expected_Data_Transfer_Length;
-
-      else
-         Current_Command.Write_Expected_Data_Transfer_Length := 0;
-         Current_Command.Read_Expected_Data_Transfer_Length := 0;
+      if not Header.Final then
+         raise Program_Error;
       end if;
 
       Target.Handler.Execute_Command
