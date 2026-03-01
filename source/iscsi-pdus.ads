@@ -162,6 +162,176 @@ package iSCSI.PDUs with Pure is
       Reserved_47        at 47 range 0 .. 7;
    end record;
 
+   --------------------------------------
+   -- Logout request / Logout response --
+   --------------------------------------
+
+   type Logout_Request_Header is record
+      Reserved_0_0_0     : A0B.Types.Reserved_1    := A0B.Types.Zero;
+      Immediate          : Boolean;
+      Opcode             : iSCSI.Types.Opcode_Type :=
+        iSCSI.Types.Logout_Request;
+      One_1_0_0          : Boolean                 := True;
+      Reason_Code        : A0B.Types.Unsigned_7;
+      Reserved_2         : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_3         : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      TotalAHSLength     : A0B.Types.Unsigned_8    := 0;
+      DataSegmentLength  : A0B.Types.Unsigned_24   := 0;
+      Reserved_8         : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_9         : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_10        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_11        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_12        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_13        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_14        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_15        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Initiator_Task_Tag : A0B.Types.Unsigned_32;
+      CID                : A0B.Types.Unsigned_16;
+      Reserved_22        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_23        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      CmdSN              : A0B.Types.Unsigned_32;
+      ExpStatSN          : A0B.Types.Unsigned_32;
+      Reserved_32        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_33        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_34        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_35        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_36        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_37        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_38        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_39        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_40        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_41        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_42        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_43        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_44        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_45        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_46        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_47        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+   end record
+     with Size                 => Basic_Header_Segment_Length * Byte_Size,
+          Bit_Order            => System.High_Order_First,
+          Scalar_Storage_Order => System.High_Order_First;
+
+   for Logout_Request_Header use record
+      Reserved_0_0_0     at 0 range 0 .. 0;
+      Immediate          at 0 range 1 .. 1;
+      Opcode             at 0 range 2 .. 7;
+      One_1_0_0          at 1 range 0 .. 0;
+      Reason_Code        at 1 range 1 .. 7;
+      Reserved_2         at 2 range 0 .. 7;
+      Reserved_3         at 3 range 0 .. 7;
+      TotalAHSLength     at 4 range 0 .. 7;
+      DataSegmentLength  at 5 range 0 .. 23;
+      Reserved_8         at 8 range 0 .. 7;
+      Reserved_9         at 9 range 0 .. 7;
+      Reserved_10        at 10 range 0 .. 7;
+      Reserved_11        at 11 range 0 .. 7;
+      Reserved_12        at 12 range 0 .. 7;
+      Reserved_13        at 13 range 0 .. 7;
+      Reserved_14        at 14 range 0 .. 7;
+      Reserved_15        at 15 range 0 .. 7;
+      Initiator_Task_Tag at 16 range 0 .. 31;
+      CID                at 20 range 0 .. 15;
+      Reserved_22        at 22 range 0 .. 7;
+      Reserved_23        at 23 range 0 .. 7;
+      CmdSN              at 24 range 0 .. 31;
+      ExpStatSN          at 28 range 0 .. 31;
+      Reserved_32        at 32 range 0 .. 7;
+      Reserved_33        at 33 range 0 .. 7;
+      Reserved_34        at 34 range 0 .. 7;
+      Reserved_35        at 35 range 0 .. 7;
+      Reserved_36        at 36 range 0 .. 7;
+      Reserved_37        at 37 range 0 .. 7;
+      Reserved_38        at 38 range 0 .. 7;
+      Reserved_39        at 39 range 0 .. 7;
+      Reserved_40        at 40 range 0 .. 7;
+      Reserved_41        at 41 range 0 .. 7;
+      Reserved_42        at 42 range 0 .. 7;
+      Reserved_43        at 43 range 0 .. 7;
+      Reserved_44        at 44 range 0 .. 7;
+      Reserved_45        at 45 range 0 .. 7;
+      Reserved_46        at 46 range 0 .. 7;
+      Reserved_47        at 47 range 0 .. 7;
+   end record;
+
+   type Logout_Response_Header is record
+      Reserved_0_0_1     : A0B.Types.Reserved_2    := A0B.Types.Zero;
+      Opcode             : iSCSI.Types.Opcode_Type :=
+        iSCSI.Types.Logout_Response;
+      One_1_0_0          : Boolean                 := True;
+      Reserved_1_1_7     : A0B.Types.Reserved_7    := A0B.Types.Zero;
+      Reserved_2         : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_3         : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      TotalAHSLength     : A0B.Types.Unsigned_8    := 0;
+      DataSegmentLength  : A0B.Types.Unsigned_24   := 0;
+      Reserved_8         : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_9         : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_10        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_11        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_12        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_13        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_14        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_15        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Initiator_Task_Tag : A0B.Types.Unsigned_32;
+      Reserved_20        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_21        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_22        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_23        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      StatSN             : A0B.Types.Unsigned_32;
+      ExpCmdSN           : A0B.Types.Unsigned_32;
+      MaxCmdSN           : A0B.Types.Unsigned_32;
+      Reserved_36        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_37        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_38        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_39        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Time2Wait          : A0B.Types.Unsigned_16;
+      Time2Retain        : A0B.Types.Unsigned_16;
+      Reserved_44        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_45        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_46        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+      Reserved_47        : A0B.Types.Reserved_8    := A0B.Types.Zero;
+   end record
+     with Size                 => Basic_Header_Segment_Length * Byte_Size,
+          Bit_Order            => System.High_Order_First,
+          Scalar_Storage_Order => System.High_Order_First;
+
+   for Logout_Response_Header use record
+      Reserved_0_0_1     at 0 range 0 .. 1;
+      Opcode             at 0 range 2 .. 7;
+      One_1_0_0          at 1 range 0 .. 0;
+      Reserved_1_1_7        at 1 range 1 .. 7;
+      Reserved_2         at 2 range 0 .. 7;
+      Reserved_3         at 3 range 0 .. 7;
+      TotalAHSLength     at 4 range 0 .. 7;
+      DataSegmentLength  at 5 range 0 .. 23;
+      Reserved_8         at 8 range 0 .. 7;
+      Reserved_9         at 9 range 0 .. 7;
+      Reserved_10        at 10 range 0 .. 7;
+      Reserved_11        at 11 range 0 .. 7;
+      Reserved_12        at 12 range 0 .. 7;
+      Reserved_13        at 13 range 0 .. 7;
+      Reserved_14        at 14 range 0 .. 7;
+      Reserved_15        at 15 range 0 .. 7;
+      Initiator_Task_Tag at 16 range 0 .. 31;
+      Reserved_20        at 20 range 0 .. 7;
+      Reserved_21        at 21 range 0 .. 7;
+      Reserved_22        at 22 range 0 .. 7;
+      Reserved_23        at 23 range 0 .. 7;
+      StatSN             at 24 range 0 .. 31;
+      ExpCmdSN           at 28 range 0 .. 31;
+      MaxCmdSN           at 32 range 0 .. 31;
+      Reserved_36        at 36 range 0 .. 7;
+      Reserved_37        at 37 range 0 .. 7;
+      Reserved_38        at 38 range 0 .. 7;
+      Reserved_39        at 39 range 0 .. 7;
+      Time2Wait          at 40 range 0 .. 15;
+      Time2Retain        at 42 range 0 .. 15;
+      Reserved_44        at 44 range 0 .. 7;
+      Reserved_45        at 45 range 0 .. 7;
+      Reserved_46        at 46 range 0 .. 7;
+      Reserved_47        at 47 range 0 .. 7;
+   end record;
+
    -----------------------
    -- Ready To Transfer --
    -----------------------
