@@ -55,6 +55,8 @@ procedure Target.Driver is
 
    procedure Process_Login_Request;
 
+   procedure Process_Logout_Request;
+
    procedure Process_SCSI_Command;
 
    procedure Process_SCSI_Data_Out;
@@ -167,6 +169,9 @@ procedure Target.Driver is
 
       elsif Header.Opcode = iSCSI.Types.SCSI_Data_Out then
          raise Program_Error;
+
+      elsif Header.Opcode = iSCSI.Types.Logout_Request then
+         Process_Logout_Request;
 
       else
          raise Program_Error;
@@ -299,6 +304,41 @@ procedure Target.Driver is
             Last   => Last);
       end;
    end Process_Login_Request;
+
+   ----------------------------
+   -- Process_Logout_Request --
+   ----------------------------
+
+   procedure Process_Logout_Request is
+   begin
+      declare
+         Request_Header : iSCSI.PDUs.Logout_Request_Header
+           with Import, Address => Current_PDU.Header_Storage;
+
+         Header       : iSCSI.PDUs.Logout_Response_Header :=
+           (Initiator_Task_Tag => Request_Header.Initiator_Task_Tag,
+            StatSN      => Connection_StatSN,
+            ExpCmdSN    => Session_ExpCmdSN,
+            MaxCmdSN    => Session_MaxCmdSN,
+            Time2Wait   => 0,
+            Time2Retain => 0,
+            others      => <>);
+         pragma Warnings (Off, "overlay changes scalar storage order");
+         Header_Storage : Ada.Streams.Stream_Element_Array (0 .. 47)
+           with Import, Address => Header'Address;
+         pragma Warnings (On, "overlay changes scalar storage order");
+
+      begin
+         Connection_StatSN := @ + 1;
+
+         GNAT.Sockets.Send_Socket
+           (Socket => Accept_Socket,
+            Item   => Header_Storage,
+            Last   => Last);
+      end;
+
+      raise Program_Error with "Logout";
+   end Process_Logout_Request;
 
    ------------------------
    -- Process_PDU_Header --
