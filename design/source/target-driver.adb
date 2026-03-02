@@ -90,7 +90,6 @@ procedure Target.Driver is
    --  Session_CmdSN     : A0B.Types.Unsigned_32 := 0;
    Session_ExpCmdSN  : A0B.Types.Unsigned_32 := 0;
    Session_MaxCmdSN  : A0B.Types.Unsigned_32 := 0;
-   Connection_StatSN : A0B.Types.Unsigned_32 := 0;
 
    type State_Kind is
      (Receive_PDU, Ready_To_Transfer, Data_Out, Data_In, Response);
@@ -261,7 +260,7 @@ procedure Target.Driver is
             ISID               => Request_Header.ISID,
             TSIH               => 16#1234#,
             Initiator_Task_Tag => Request_Header.Initiator_Task_Tag,
-            StatSN             => Connection_StatSN,
+            StatSN             => Current_Connection.StatSN,
             ExpCmdSN           => Session_ExpCmdSN,
             MaxCmdSN           => Session_MaxCmdSN,
             Status_Class       => 0,
@@ -277,7 +276,7 @@ procedure Target.Driver is
            with Import, Address => Response_Storage'Address;
 
       begin
-         Connection_StatSN := @ + 1;
+         Current_Connection.StatSN := @ + 1;
 
          GNAT.Sockets.Send_Socket
            (Socket => Accept_Socket,
@@ -302,7 +301,7 @@ procedure Target.Driver is
 
          Header       : iSCSI.PDUs.Logout_Response_Header :=
            (Initiator_Task_Tag => Request_Header.Initiator_Task_Tag,
-            StatSN      => Connection_StatSN,
+            StatSN      => Current_Connection.StatSN,
             ExpCmdSN    => Session_ExpCmdSN,
             MaxCmdSN    => Session_MaxCmdSN,
             Time2Wait   => 0,
@@ -314,7 +313,7 @@ procedure Target.Driver is
          pragma Warnings (On, "overlay changes scalar storage order");
 
       begin
-         Connection_StatSN := @ + 1;
+         Current_Connection.StatSN := @ + 1;
 
          GNAT.Sockets.Send_Socket
            (Socket => Accept_Socket,
@@ -541,7 +540,7 @@ procedure Target.Driver is
             Logical_Unit_Number => 0,
             Initiator_Task_Tag  => Current_Command.Initiator_Task_Tag,
             Target_Transfer_Tag => 0,
-            StatSN              => Connection_StatSN,
+            StatSN              => Current_Connection.StatSN,
             ExpCmdSN            => Session_ExpCmdSN,
             MaxCmdSN            => Session_MaxCmdSN,
             DataSN              => Current_Command.DataSN,
@@ -605,7 +604,7 @@ procedure Target.Driver is
             Logical_Unit_Number          => Current_Command.Logical_Unit_Number,
             Initiator_Task_Tag           => Current_Command.Initiator_Task_Tag,
             Target_Transfer_Tag          => 0,
-            StatSN                       => Connection_StatSN,
+            StatSN                       => Current_Connection.StatSN,
             ExpCmdSN                     => Session_ExpCmdSN,
             MaxCmdSN                     => Session_MaxCmdSN,
             R2TSN                        => Current_Command.R2TSN,
@@ -816,7 +815,7 @@ procedure Target.Driver is
             Initiator_Task_Tag                    =>
               Current_Command.Initiator_Task_Tag,
             SNACK_Tag                             => 0,
-            StatSN                                => Connection_StatSN,
+            StatSN                                => Current_Connection.StatSN,
             ExpCmdSN                              => Session_ExpCmdSN,
             MaxCmdSN                              => Session_MaxCmdSN,
             ExpDataSN                             => 0,
@@ -840,7 +839,7 @@ procedure Target.Driver is
            with Import, Address => Data (2)'Address;
 
       begin
-         Connection_StatSN := @ + 1;
+         Current_Connection.StatSN := @ + 1;
 
          if Header.Status /= SCSI.SAM5.GOOD then
             SenseLength := (Value => 18);
@@ -925,6 +924,7 @@ begin
      (Data_Storage'Address, Data_Storage'Length);
    Current_Connection.Data_In_Buffer.Initialize
      (Response_Storage'Address, Response_Storage'Length);
+   Current_Connection.StatSN := 0;
 
    loop
       case State is
