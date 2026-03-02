@@ -16,6 +16,7 @@ with A0B.Types.Big_Endian;
 
 with iSCSI.PDUs;
 with iSCSI.Target.Commands;
+with iSCSI.Target.Connections;
 with iSCSI.Target.Login;
 with iSCSI.Text;
 with iSCSI.Types;
@@ -86,9 +87,6 @@ procedure Target.Driver is
 
    Response_Storage : Ada.Streams.Stream_Element_Array (0 .. 256*1024 -1); --  65_535);
 
-   Data_Out_Buffer : SCSI.Buffers.Data_Buffer;
-   Data_In_Buffer  : SCSI.Buffers.Data_Buffer;
-
    --  Session_CmdSN     : A0B.Types.Unsigned_32 := 0;
    Session_ExpCmdSN  : A0B.Types.Unsigned_32 := 0;
    Session_MaxCmdSN  : A0B.Types.Unsigned_32 := 0;
@@ -110,9 +108,10 @@ procedure Target.Driver is
       Desired_Data_Transfer_Length : A0B.Types.Unsigned_32;
    end record;
 
-   Current_PDU      : PDU;
-   Current_Command  : iSCSI.Target.Commands.Abstract_Command;
-   Current_Data_Out : Data_Out_Information;
+   Current_Connection : iSCSI.Target.Connections.Connection;
+   Current_PDU        : PDU;
+   Current_Command    : iSCSI.Target.Commands.Abstract_Command;
+   Current_Data_Out   : Data_Out_Information;
 
    -------------------
    -- Adjusted_Size --
@@ -179,7 +178,7 @@ procedure Target.Driver is
          State := Ready_To_Transfer;
 
       elsif Current_Command.Read then
-         if SCSI.Buffers.Length (Data_In_Buffer) = 0 then
+         if Current_Connection.Data_In_Buffer.Length = 0 then
             State := Data_In;
 
          else
@@ -411,8 +410,8 @@ procedure Target.Driver is
       Target.Handler.Execute_Command
         (CDB_Storage     =>
            Current_Command.CDB_Storage (0 .. Current_Command.CDB_Length - 1),
-         Data_Out_Buffer => Data_Out_Buffer,
-         Data_In_Buffer  => Data_In_Buffer,
+         Data_Out_Buffer => Current_Connection.Data_Out_Buffer,
+         Data_In_Buffer  => Current_Connection.Data_In_Buffer,
          On_Finished     =>
            On_Command_Execute_Finished_Callbacks.Create_Callback);
    end Process_SCSI_Command;
@@ -517,13 +516,14 @@ procedure Target.Driver is
       Data_Length : A0B.Types.Unsigned_32;
 
    begin
-      if Data_In_Buffer.Length = 0 then
-         Target.Handler.Data_In (Data_In_Buffer);
+      if Current_Connection.Data_In_Buffer.Length = 0 then
+         Target.Handler.Data_In (Current_Connection.Data_In_Buffer);
       end if;
 
       Data_Length :=
         A0B.Types.Unsigned_32'Min
-          (Data_In_Buffer.Allocation_Length, Data_In_Buffer.Length);
+          (Current_Connection.Data_In_Buffer.Allocation_Length,
+           Current_Connection.Data_In_Buffer.Length);
 
       Current_Command.Read_Data_Transfer_Length := @ + Data_Length;
 
@@ -575,7 +575,7 @@ procedure Target.Driver is
          Put_Line ("  ... done.");
       end;
 
-      Data_In_Buffer.Reset;
+      Current_Connection.Data_In_Buffer.Reset;
       State := Response;
    end Send_Data_In;
 
@@ -885,8 +885,8 @@ procedure Target.Driver is
          Put_Line ("  ... done.");
       end;
 
-      SCSI.Buffers.Reset (Data_Out_Buffer);
-      SCSI.Buffers.Reset (Data_In_Buffer);
+      SCSI.Buffers.Reset (Current_Connection.Data_Out_Buffer);
+      SCSI.Buffers.Reset (Current_Connection.Data_In_Buffer);
 
       State := Receive_PDU;
    end Send_Response;
@@ -919,10 +919,12 @@ begin
       Address  => Client_Address);
    GNAT.Sockets.Close_Socket (Listen_Socket);
 
-   SCSI.Buffers.Initialize
-     (Data_Out_Buffer, Data_Storage'Address, Data_Storage'Length);
-   SCSI.Buffers.Initialize
-     (Data_In_Buffer, Response_Storage'Address, Response_Storage'Length);
+   Current_Connection.Header_Buffer.Initialize
+     (Request_Header_Storage'Address, Request_Header_Storage'Length);
+   Current_Connection.Data_Out_Buffer.Initialize
+     (Data_Storage'Address, Data_Storage'Length);
+   Current_Connection.Data_In_Buffer.Initialize
+     (Response_Storage'Address, Response_Storage'Length);
 
    loop
       case State is
